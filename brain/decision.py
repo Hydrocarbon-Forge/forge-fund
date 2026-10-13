@@ -19,8 +19,9 @@ from pathlib import Path
 import pandas as pd
 
 from brain.claude_client import ClaudeClient, ClaudeError, ClaudeLimitError, detect_limit_message
+from brain.gemini_client import GeminiError, call_gemini, prompt_from_messages
 from brain.schema import Decision, DecisionParseError, parse_decision
-from forge.config import LIMITS, Limits, get_paths, redact
+from forge.config import LIMITS, Limits, gemini_settings, get_paths, redact
 from forge.risk import is_crypto
 from forge.types import PortfolioView
 
@@ -169,6 +170,7 @@ def build_messages(label: str, features: pd.DataFrame, kronos: pd.DataFrame | No
 class BrainResult:
     status: str                     # ok | fallback_hold | claude_limit
     decision: Decision | None = None
+    brain: str = "claude"           # claude | gemini | hold | rules
     model: str = ""
     prompt_hash: str = ""
     usage: dict = field(default_factory=dict)
@@ -186,8 +188,9 @@ class ClaudeBrain:
         self.cache_dir = cache_dir or (get_paths().data / "claude_cache")
         self.max_tokens = max_tokens
 
-    def _key(self, model: str, messages: list[dict]) -> str:
-        return hashlib.sha256(json.dumps([model, messages], sort_keys=True).encode()).hexdigest()[:16]
+    def _key(self, model: str, messages: list[dict], brain: str = "claude") -> str:
+        payload = [model, messages] if brain == "claude" else [brain, model, messages]
+        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
 
     def _cache_get(self, key: str) -> dict | None:
         p = self.cache_dir / f"{key}.json"
@@ -204,9 +207,88 @@ class ClaudeBrain:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         (self.cache_dir / f"{key}.json").write_text(json.dumps(payload))
 
+    def _gemini_fallback(
+        self,
+        messages: list[dict],
+        valid_ids: set[str],
+        orig_error: str | None,
+        orig_status: str,
+        claude_calls: int = 0,
+        claude_cost: float = 0.0,
+        claude_usage: dict | None = None,
+    ) -> BrainResult:
+        g_cfg = gemini_settings()
+        if not g_cfg.enabled:
+            return BrainResult(
+                status=orig_status,
+                brain="hold",
+                error=orig_error,
+                calls=claude_calls,
+                cost_usd=claude_cost,
+                usage=claude_usage or {},
+            )
+        log.info("Claude failed (%s); attempting Gemini fallback using model %s", orig_error, g_cfg.model)
+        gemini_key = self._key(g_cfg.model, messages, brain="gemini")
+        cached = self._cache_get(gemini_key)
+        try:
+            if cached:
+                text = cached["text"]
+                g_usage = cached.get("usage", {})
+                g_cost = cached.get("cost_usd", 0.0)
+                was_cached = True
+            else:
+                prompt = prompt_from_messages(messages)
+                out = call_gemini(prompt, g_cfg)
+                text = out.text
+                g_usage = out.usage
+                g_cost = out.cost_usd
+                was_cached = False
+
+            decision = parse_decision(text, valid_ids)
+            total_usage = {
+                "prompt_tokens": (claude_usage or {}).get("prompt_tokens", 0) + g_usage.get("prompt_tokens", 0),
+                "completion_tokens": (claude_usage or {}).get("completion_tokens", 0) + g_usage.get("completion_tokens", 0),
+            }
+            total_cost = round(claude_cost + g_cost, 6)
+            total_calls = claude_calls + (0 if was_cached else 1)
+
+            self._cache_put(gemini_key, {
+                "text": text,
+                "usage": g_usage,
+                "cost_usd": g_cost,
+                "model": g_cfg.model,
+                "brain": "gemini",
+            })
+            log.info("Gemini fallback succeeded (model=%s, cached=%s, cost=$%.6f)", g_cfg.model, was_cached, g_cost)
+            return BrainResult(
+                status="ok",
+                decision=decision,
+                brain="gemini",
+                model=g_cfg.model,
+                prompt_hash=gemini_key[:12],
+                usage=total_usage,
+                cost_usd=total_cost,
+                error=None,
+                calls=total_calls,
+                cached=was_cached,
+            )
+        except Exception as e:
+            err_msg = redact(e)
+            log.warning("Gemini fallback failed: %s; falling back to HOLD", err_msg)
+            return BrainResult(
+                status="fallback_hold",
+                brain="hold",
+                model=g_cfg.model,
+                prompt_hash=gemini_key[:12],
+                error=f"Claude error: {orig_error}; Gemini fallback error: {err_msg}",
+                calls=claude_calls + (0 if cached else 1),
+                cost_usd=claude_cost,
+                usage=claude_usage or {},
+            )
+
     def decide(self, messages: list[dict], model: str, valid_ids: set[str]) -> BrainResult:
         orig_key = self._key(model, messages)
-        res = BrainResult(status="fallback_hold", model=model, prompt_hash=orig_key[:12])
+        res = BrainResult(status="fallback_hold", brain="claude", model=model, prompt_hash=orig_key[:12])
         convo = list(messages)
         for attempt in range(2):                       # original + one repair
             cached = self._cache_get(self._key(model, convo))
@@ -218,7 +300,7 @@ class ClaudeBrain:
                 else:
                     if self.client is None:
                         res.error = "no claude client"
-                        return res
+                        return self._gemini_fallback(messages, valid_ids, orig_error=res.error, orig_status="fallback_hold")
                     out = self.client.chat(convo, model=model, max_tokens=self.max_tokens, temperature=0.2,
                                            purpose="decision" if attempt == 0 else "repair")
                     text, usage, cost, was_cached = out.text, out.usage, out.cost_usd, False
@@ -226,20 +308,23 @@ class ClaudeBrain:
             except ClaudeLimitError as e:
                 res.status, res.error = "claude_limit", redact(f"claude usage limit: {e}")
                 log.error(res.error)
-                return res
+                return self._gemini_fallback(messages, valid_ids, orig_error=res.error, orig_status="claude_limit",
+                                              claude_calls=res.calls, claude_cost=res.cost_usd, claude_usage=res.usage)
             except ClaudeError as e:
                 res.error = redact(f"claude call failed: {e}")
                 log.error(res.error)
-                return res
+                return self._gemini_fallback(messages, valid_ids, orig_error=res.error, orig_status="fallback_hold",
+                                              claude_calls=res.calls, claude_cost=res.cost_usd, claude_usage=res.usage)
             res.usage = {k: res.usage.get(k, 0) + usage.get(k, 0) for k in ("prompt_tokens", "completion_tokens")}
             res.cost_usd += cost
             res.cached = was_cached
             try:
                 res.decision = parse_decision(text, valid_ids)
                 res.status = "ok"
+                res.brain = "claude"
                 res.error = None
                 # cache only VALID answers, under the original prompt key (so a resumed run is deterministic)
-                self._cache_put(orig_key, {"text": text, "usage": res.usage, "cost_usd": res.cost_usd, "model": model})
+                self._cache_put(orig_key, {"text": text, "usage": res.usage, "cost_usd": res.cost_usd, "model": model, "brain": "claude"})
                 return res
             except DecisionParseError as e:
                 res.error = f"parse failure: {e}"
@@ -248,4 +333,5 @@ class ClaudeBrain:
                     {"role": "assistant", "content": text[:4000]},
                     {"role": "user", "content": f"Your reply was rejected by the validator: {e}. "
                                                  "Reply again with ONLY the corrected JSON object."}]
-        return res
+        return self._gemini_fallback(messages, valid_ids, orig_error=res.error, orig_status="fallback_hold",
+                                      claude_calls=res.calls, claude_cost=res.cost_usd, claude_usage=res.usage)

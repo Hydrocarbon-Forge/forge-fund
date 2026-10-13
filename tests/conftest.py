@@ -16,6 +16,7 @@ def _isolated_root(tmp_path, monkeypatch):
     monkeypatch.setenv("CLAUDE_LOCAL_TOKEN", "test-token-NOT-REAL-123456")
     monkeypatch.setenv("CLAUDE_BASE_URL", "http://claude.test/v1")
     monkeypatch.setenv("CLAUDE_MODEL", "sonnet")
+    monkeypatch.setenv("GEMINI_FALLBACK", "false")
     for d in ("data", "state", "logs", "backtests"):
         (tmp_path / d).mkdir(parents=True, exist_ok=True)
     yield tmp_path

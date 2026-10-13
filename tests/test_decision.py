@@ -257,3 +257,117 @@ def test_prompt_never_feeds_back_model_authored_notes_but_shows_computed_regime(
     assert "SECRET-RULE" not in text and "PREVIOUS REVIEW" not in text
     assert "UNIVERSE REGIME (computed by code" in text and "above 50d avg" in text
     assert "MANDATE" in msgs[0]["content"] and "long-only equity fund" in msgs[0]["content"]
+
+
+# ----------------------------------------------------------------------------- (d) Gemini Fallback
+def test_claude_ok_uses_claude_and_never_calls_gemini(features, kronos_df, view, tmp_path, monkeypatch):
+    from unittest.mock import patch
+    monkeypatch.setenv("GEMINI_FALLBACK", "true")
+    msgs, ids = _decide_inputs(features, kronos_df, view)
+    client = FakeClaude([VALID_REPLY])
+    with patch("brain.decision.call_gemini") as mock_gemini:
+        res = _brain(client, tmp_path).decide(msgs, "haiku", ids)
+        assert res.status == "ok"
+        assert res.brain == "claude"
+        assert res.model == "haiku"
+        mock_gemini.assert_not_called()
+
+
+def test_claude_limit_falls_back_to_gemini(features, kronos_df, view, tmp_path, monkeypatch):
+    from unittest.mock import patch
+    from brain.claude_client import ClaudeLimitError
+    from brain.gemini_client import GeminiOutput
+    monkeypatch.setenv("GEMINI_FALLBACK", "true")
+    msgs, ids = _decide_inputs(features, kronos_df, view)
+    client = FakeClaude(exc=ClaudeLimitError("Weekly usage limit reached · resets Oct 16"))
+    with patch("brain.decision.call_gemini") as mock_gemini:
+        mock_gemini.return_value = GeminiOutput(
+            text=VALID_REPLY,
+            usage={"prompt_tokens": 1500, "completion_tokens": 120},
+            cost_usd=0.0003,
+        )
+        res = _brain(client, tmp_path).decide(msgs, "haiku", ids)
+        assert res.status == "ok"
+        assert res.brain == "gemini"
+        assert res.model == "gemini-3.8-flash-high"
+        assert res.decision is not None
+        assert res.decision.holdings["S001"].weight == pytest.approx(0.2)
+        mock_gemini.assert_called_once()
+
+
+def test_claude_error_and_gemini_error_falls_back_to_hold(features, kronos_df, view, tmp_path, monkeypatch):
+    from unittest.mock import patch
+    from brain.gemini_client import GeminiError
+    monkeypatch.setenv("GEMINI_FALLBACK", "true")
+    msgs, ids = _decide_inputs(features, kronos_df, view)
+    client = FakeClaude(exc=ClaudeError("503 Service Unavailable"))
+    with patch("brain.decision.call_gemini") as mock_gemini:
+        mock_gemini.side_effect = GeminiError("CLI crashed")
+        res = _brain(client, tmp_path).decide(msgs, "haiku", ids)
+        assert res.status == "fallback_hold"
+        assert res.brain == "hold"
+        assert res.decision is None
+        assert "Gemini fallback error" in (res.error or "")
+        mock_gemini.assert_called_once()
+
+
+def test_gemini_fallback_disabled_stops_at_claude_failure(features, kronos_df, view, tmp_path, monkeypatch):
+    from unittest.mock import patch
+    monkeypatch.setenv("GEMINI_FALLBACK", "false")
+    msgs, ids = _decide_inputs(features, kronos_df, view)
+    client = FakeClaude(exc=ClaudeError("Connection refused"))
+    with patch("brain.decision.call_gemini") as mock_gemini:
+        res = _brain(client, tmp_path).decide(msgs, "haiku", ids)
+        assert res.status == "fallback_hold"
+        assert res.brain == "hold"
+        assert res.decision is None
+        mock_gemini.assert_not_called()
+
+
+def test_claude_two_parse_failures_falls_back_to_gemini(features, kronos_df, view, tmp_path, monkeypatch):
+    from unittest.mock import patch
+    from brain.gemini_client import GeminiOutput
+    monkeypatch.setenv("GEMINI_FALLBACK", "true")
+    msgs, ids = _decide_inputs(features, kronos_df, view)
+    client = FakeClaude([BAD_SUM_REPLY, BAD_SUM_REPLY])
+    with patch("brain.decision.call_gemini") as mock_gemini:
+        mock_gemini.return_value = GeminiOutput(
+            text=VALID_REPLY,
+            usage={"prompt_tokens": 1200, "completion_tokens": 100},
+            cost_usd=0.0002,
+        )
+        res = _brain(client, tmp_path).decide(msgs, "haiku", ids)
+        assert res.status == "ok"
+        assert res.brain == "gemini"
+        assert res.model == "gemini-3.8-flash-high"
+        assert client.calls == 2
+        mock_gemini.assert_called_once()
+
+
+def test_gemini_fallback_cached_separately_from_claude(features, kronos_df, view, tmp_path, monkeypatch):
+    from unittest.mock import patch
+    from brain.claude_client import ClaudeLimitError
+    from brain.gemini_client import GeminiOutput
+    monkeypatch.setenv("GEMINI_FALLBACK", "true")
+    msgs, ids = _decide_inputs(features, kronos_df, view)
+    client = FakeClaude(exc=ClaudeLimitError("Limit hit"))
+    with patch("brain.decision.call_gemini") as mock_gemini:
+        mock_gemini.return_value = GeminiOutput(
+            text=VALID_REPLY,
+            usage={"prompt_tokens": 1000, "completion_tokens": 80},
+            cost_usd=0.0002,
+        )
+        brain = _brain(client, tmp_path, use_cache=True)
+        first = brain.decide(msgs, "haiku", ids)
+        assert first.status == "ok"
+        assert first.brain == "gemini"
+        assert first.cached is False
+        assert mock_gemini.call_count == 1
+
+        second = brain.decide(msgs, "haiku", ids)
+        assert second.status == "ok"
+        assert second.brain == "gemini"
+        assert second.cached is True
+        assert second.calls == 0
+        assert mock_gemini.call_count == 1  # No second call to gemini
+
