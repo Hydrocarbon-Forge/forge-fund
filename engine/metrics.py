@@ -30,7 +30,7 @@ def curve_stats(eq: pd.Series) -> dict:
     dn = r[r < 0]
     dvol = math.sqrt((dn ** 2).sum() / max(len(r), 1)) * math.sqrt(TD)
     dd = _dd(eq)
-    sharpe = r.mean() / r.std(ddof=1) * math.sqrt(TD) if r.std(ddof=1) > 0 else float("nan")
+    sharpe = r.mean() / r.std(ddof=1) * math.sqrt(TD) if r.std(ddof=1) > 1e-12 else float("nan")
     return {
         "start": str(eq.index[0].date()), "end": str(eq.index[-1].date()), "days": int(len(eq)),
         "total_return": float(total), "cagr": float(cagr), "ann_vol": float(vol), "sharpe": float(sharpe),

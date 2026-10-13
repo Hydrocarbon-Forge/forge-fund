@@ -14,9 +14,10 @@ def _rsi(close: pd.DataFrame, n: int = 14) -> pd.Series:
     d = close.diff()
     up = d.clip(lower=0).ewm(alpha=1 / n, adjust=False, min_periods=n).mean()
     dn = (-d.clip(upper=0)).ewm(alpha=1 / n, adjust=False, min_periods=n).mean()
-    rs = up / dn.replace(0, np.nan)
-    rsi = 100 - 100 / (1 + rs)
-    return rsi.iloc[-1].fillna(50.0)
+    up_l, dn_l = up.iloc[-1], dn.iloc[-1]
+    rsi = 100 - 100 / (1 + up_l / dn_l.replace(0, np.nan))
+    rsi = rsi.where(~((dn_l == 0) & (up_l > 0)), 100.0)          # only gains -> 100 (not "no data")
+    return rsi.fillna(50.0)                                     # no moves / not enough history -> neutral
 
 
 def compute_features(close: pd.DataFrame, volume: pd.DataFrame, asof: pd.Timestamp,

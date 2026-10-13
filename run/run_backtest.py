@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 import logging
 import sys
 import time
@@ -101,6 +102,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-anonymize", action="store_true", help="show real tickers/dates to Claude (leakage risk!)")
     ap.add_argument("--model", default=None, help="force one Claude model for every call (default: sonnet weekly review / haiku routine)")
     ap.add_argument("--await-kronos", type=float, default=0.0, metavar="SECONDS", help="wait for a Kronos precompute process")
+    ap.add_argument("--wait-for-limit-hours", type=float, default=8.0,
+                    help="if the Claude endpoint reports a usage limit, sleep until its reset (up to this many hours)")
     ap.add_argument("--run-id", default=None)
     ap.add_argument("--max-events", type=int, default=None, help="smoke-test: stop after N rebalances")
     args = ap.parse_args(argv)
@@ -135,7 +138,8 @@ def main(argv: list[str] | None = None) -> int:
 
     brain = None
     if not args.no_claude:
-        brain = ClaudeBrain(ClaudeClient(log_path=out / "calls.jsonl"), use_cache=True)
+        settings = replace(claude_settings(), limit_wait_cap_s=args.wait_for_limit_hours * 3600)
+        brain = ClaudeBrain(ClaudeClient(settings=settings, log_path=out / "calls.jsonl"), use_cache=True)
     cfg = PipelineConfig(mode="backtest", anonymize=not args.no_anonymize, use_claude=not args.no_claude,
                          use_kronos=not args.no_kronos, forced_model=args.model, sim_start=str(dates[0].date()),
                          decisions_path=out / "decisions.jsonl", kronos_wait_s=args.await_kronos)
@@ -187,11 +191,15 @@ def main(argv: list[str] | None = None) -> int:
         "claude": {"calls": sc["calls"], "decisions": sc["decisions"], "fallback_holds": sc["fallback_holds"],
                    "prompt_tokens": sc["prompt_tokens"], "completion_tokens": sc["completion_tokens"],
                    "est_cost_usd": round(sc["cost_usd"], 4)},
+        "validity": {"decisions_attempted": sc["decisions"] + sc["fallback_holds"], "fallback_holds": sc["fallback_holds"],
+                     "fallback_share": sc["fallback_holds"] / max(sc["decisions"] + sc["fallback_holds"], 1),
+                     "limit_hits": sc.get("limit_hits", 0)},
         "halts": pipe.halts, "rejected_orders": len(res.rejected), "decider_errors": len(res.errors),
         "assumptions": {"half_spread_bps": HALF_SPREAD_BPS, "fee_bps_per_side": float(FEE_RATE) * 1e4,
                         "risk_free_rate": 0.0, "limits": LIMITS.__dict__, "anonymized_prompts": cfg.anonymize,
                         "universe_size": len(mkt.universe), "kronos_model": KRONOS.model_name},
     }
+    metrics["valid_run"] = (not args.no_claude) and metrics["validity"]["fallback_share"] <= 0.10 or args.no_claude
     (out / "metrics.json").write_text(json.dumps(metrics, indent=2, default=str))
     curve = pd.concat([fund, spy, matched, ew], axis=1)
     curve.index.name = "date"
@@ -202,6 +210,9 @@ def main(argv: list[str] | None = None) -> int:
     (out / "report.txt").write_text(text)
     print(text)
     log.info("saved -> %s", out)
+    if not metrics["valid_run"]:
+        log.error("INVALID RUN: %.0f%% of decisions fell back to HOLD - results do not reflect the strategy", 100 * metrics["validity"]["fallback_share"])
+        return 4
     return 0 if not res.errors else 2
 
 

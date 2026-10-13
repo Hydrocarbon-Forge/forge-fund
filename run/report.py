@@ -27,6 +27,10 @@ def render_report(m: dict) -> str:
     L.append(f"period {m['start']} -> {m['end']}  |  {m['n_rebalances']} rebalances ({m['freq']})  |  "
              f"mode: {m['mode']}  |  start capital ${m['capital']:,.0f}")
     L.append("PAPER SIMULATION - hypothetical results, not investment advice. See caveats below.")
+    v = m.get("validity") or {}
+    if v and m.get("mode") == "claude" and v.get("fallback_share", 0) > 0.10:
+        L.append(f"!!! INVALID RUN: {v['fallback_share']:.0%} of decisions ({v['fallback_holds']}/{v['decisions_attempted']}) fell back to HOLD "
+                 f"(Claude failures / usage limit). These numbers do NOT reflect the strategy. !!!")
     L.append("=" * 92)
     L.append(f"{'':<22}" + "".join(f"{c[0]:>{w}}" for c in cols))
     rows = [("Total return", "total_return", _p), ("CAGR", "cagr", _p), ("Annualised vol", "ann_vol", _u),
@@ -59,7 +63,7 @@ def render_report(m: dict) -> str:
                  f"(t={_n(k['ic_tstat'])}, positive on {_u(k['ic_positive_share'], 0)} of dates) | "
                  f"direction hit rate {_u(k['direction_hit_rate'])}")
     c = m.get("claude") or {}
-    L.append(f"Claude: {c.get('calls', 0)} calls, {c.get('decisions', 0)} usable decisions, {c.get('fallback_holds', 0)} fallback-holds | "
+    L.append(f"Claude: {c.get('calls', 0)} new calls (cached replies not counted), {c.get('decisions', 0)} usable decisions, {c.get('fallback_holds', 0)} fallback-holds | "
              f"tokens in/out {c.get('prompt_tokens', 0):,}/{c.get('completion_tokens', 0):,} | est. list-price cost ${c.get('est_cost_usd', 0):.2f}")
     L.append(f"Risk: {m.get('halts', 0)} loss-cap halts | {m.get('rejected_orders', 0)} rejected orders | {m.get('decider_errors', 0)} decider errors")
     a = m.get("assumptions") or {}

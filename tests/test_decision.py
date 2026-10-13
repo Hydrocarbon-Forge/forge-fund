@@ -226,11 +226,6 @@ def test_unknown_ticker_id_falls_back_after_repair(features, kronos_df, view, tm
     assert "unknown ticker" in (res.error or "") and "S999" in (res.error or "")
 
 
-@pytest.mark.xfail(
-    strict=True, raises=IndexError,
-    reason="BUG brain/decision.py:94 + :133: with a single-row feature table `ex` has one element and "
-           "`ex[1]` raises IndexError while building the JSON example",
-)
 def test_single_ticker_feature_table_builds_a_prompt(kronos_df, view):
     close = make_close(["AAPL"], n_days=300, seed=5)
     feats = compute_features(close, make_volume(close, seed=5), close.index[-1])

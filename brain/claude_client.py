@@ -14,10 +14,11 @@ import json
 import logging
 import math
 import random
+import re
 import time
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -27,7 +28,7 @@ import httpx
 from brain.schema import extract_json
 from forge.config import ClaudeSettings, claude_settings, estimate_cost_usd, get_paths, redact
 
-__all__ = ["ChatResult", "ClaudeClient", "ClaudeError", "extract_json"]
+__all__ = ["ChatResult", "ClaudeClient", "ClaudeError", "ClaudeLimitError", "detect_limit_message", "extract_json"]
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +44,45 @@ _REDACTED = "***REDACTED***"
 
 class ClaudeError(Exception):
     """Raised when a chat call fails for good. The message is redacted and never holds the token."""
+
+
+class ClaudeLimitError(ClaudeError):
+    """The endpoint answered HTTP 200 with a *usage-limit notice* instead of a model reply.
+
+    The local endpoint fronts a subscription, so when the session limit is hit it returns text such as
+    "You've hit your session limit · resets 4:50am (UTC)" as ordinary content. That must never be parsed
+    as a model answer (and never cached): it is surfaced as this typed error with the reset time.
+    """
+
+    def __init__(self, message: str, reset_at: datetime | None = None):
+        super().__init__(message)
+        self.reset_at = reset_at
+
+
+_LIMIT_RE = re.compile(r"(hit|reached|exceeded)\s+(your|the)\b[^.\n]{0,40}\blimit", re.I)
+_RESET_RE = re.compile(r"resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*\(?\s*(utc|gmt)?", re.I)
+
+
+def detect_limit_message(text: str, now: datetime | None = None) -> tuple[bool, datetime | None]:
+    """(is_limit_notice, reset_at_utc). Only short texts that look like a limit notice qualify."""
+    t = (text or "").strip()
+    if not t or len(t) > 400 or t.startswith(("{", "[", "```")) or not _LIMIT_RE.search(t):
+        return False, None
+    now = now or datetime.now(timezone.utc)
+    m = _RESET_RE.search(t)
+    if not m or not m.group(4):                      # only trust an explicit UTC/GMT reset time
+        return True, None
+    hour, minute, ampm = int(m.group(1)), int(m.group(2) or 0), (m.group(3) or "").lower()
+    if ampm == "pm" and hour < 12:
+        hour += 12
+    if ampm == "am" and hour == 12:
+        hour = 0
+    if hour > 23 or minute > 59:
+        return True, None
+    reset = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if reset <= now:
+        reset += timedelta(days=1)
+    return True, reset
 
 
 @dataclass
@@ -173,6 +213,7 @@ class ClaudeClient:
         started = self._clock()
         attempts = 0
         retries = 0
+        limit_waits = 0
         try:
             if not self._token:
                 raise ClaudeError("Claude token is not configured (CLAUDE_LOCAL_TOKEN); refusing to send request")
@@ -188,6 +229,18 @@ class ClaudeClient:
                 else:
                     if resp.is_success:
                         result = self._build_result(resp, messages, model, prompt_hash, attempts, started)
+                        is_limit, reset_at = detect_limit_message(result.text)
+                        if is_limit:
+                            wait_s = max((reset_at - datetime.now(timezone.utc)).total_seconds() + 90, 60.0) if reset_at else 1800.0
+                            if limit_waits < 3 and wait_s <= self.settings.limit_wait_cap_s:
+                                limit_waits += 1
+                                log.warning("Claude usage limit reported by endpoint; waiting %.0f min for reset (%s)",
+                                            wait_s / 60, reset_at.isoformat(timespec="minutes") if reset_at else "unknown")
+                                self._sleep(wait_s)
+                                continue
+                            raise ClaudeLimitError(
+                                "endpoint reported a usage limit" + (f"; resets {reset_at.isoformat(timespec='minutes')}" if reset_at else ""),
+                                reset_at)
                         break
                     status = resp.status_code
                     if status == 429:

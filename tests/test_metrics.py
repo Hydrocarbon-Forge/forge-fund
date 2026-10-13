@@ -33,11 +33,6 @@ def test_curve_stats_constant_daily_gain():
     assert st["worst_day"] == pytest.approx(0.01, rel=1e-9)
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="BUG engine/metrics.py:33: sharpe guards with std > 0, but a constant-return curve has std ~1e-15 "
-           "float noise, so Sharpe comes out as ~1e15 instead of NaN",
-)
 def test_curve_stats_constant_gain_sharpe_is_undefined():
     eq = pd.Series(100_000.0 * 1.01 ** np.arange(100), index=_bdays(100))
     assert math.isnan(curve_stats(eq)["sharpe"])

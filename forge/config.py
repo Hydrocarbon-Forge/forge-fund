@@ -119,6 +119,7 @@ class ClaudeSettings:
     max_requests_per_min: int = 9   # endpoint limit is 10/min per IP
     timeout_s: float = 180.0
     max_retries: int = 6
+    limit_wait_cap_s: float = 0.0   # >0: if the endpoint reports a usage-limit, sleep until reset (<= this many s)
 
     def __repr__(self) -> str:  # never leak the token via repr()
         return (f"ClaudeSettings(base_url={self.base_url!r}, default_model={self.default_model!r}, "

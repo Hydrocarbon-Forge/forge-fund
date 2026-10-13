@@ -102,11 +102,6 @@ def test_rsi_of_pure_downtrend_is_zero():
     assert f.loc["DN", "rsi14"] == pytest.approx(0.0)
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="BUG brain/features.py:17-19: a strictly rising series gives dn==0 -> rs=NaN -> fillna(50); "
-           "a Wilder RSI with zero average loss is 100",
-)
 def test_rsi_of_pure_uptrend_is_100():
     idx = pd.bdate_range("2024-01-02", periods=120)
     close = pd.DataFrame({"UP": 100.0 + np.arange(120.0)}, index=idx)

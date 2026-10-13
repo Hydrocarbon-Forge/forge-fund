@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from brain.claude_client import ClaudeClient, ClaudeError
+from brain.claude_client import ClaudeClient, ClaudeError, ClaudeLimitError, detect_limit_message
 from brain.schema import Decision, DecisionParseError, parse_decision
 from forge.config import LIMITS, Limits, get_paths, redact
 from forge.types import PortfolioView
@@ -65,6 +65,8 @@ class Masker:
         self.rev = {v: k for k, v in self.fwd.items()}
 
     def to_id(self, t: str) -> str:
+        if self.enabled and t not in self.fwd:           # never leak a real ticker into an anonymised prompt
+            raise KeyError(f"ticker {t!r} is not in the anonymisation map")
         return self.fwd.get(t, t)
 
     def to_ticker(self, i: str) -> str:
@@ -91,7 +93,7 @@ def build_messages(label: str, features: pd.DataFrame, kronos: pd.DataFrame | No
                    limits: Limits = LIMITS, horizon: int = 5) -> list[dict]:
     kidx = kronos.drop_duplicates("ticker").set_index("ticker") if kronos is not None and len(kronos) else None
     rows = []
-    ex = [masker.to_id(t) for t in list(features.index[:2])] or ["AAA", "BBB"]
+    ex = ([masker.to_id(t) for t in list(features.index[:2])] + ["AAA", "BBB"])[:2]
     # table order is opaque (hash order) in anonymised mode, alphabetical otherwise
     tickers = sorted(features.index, key=lambda t: masker.to_id(t))
     for t in tickers:
@@ -141,7 +143,7 @@ def build_messages(label: str, features: pd.DataFrame, kronos: pd.DataFrame | No
 # --------------------------------------------------------------------------------- the brain
 @dataclass
 class BrainResult:
-    status: str                     # ok | fallback_hold
+    status: str                     # ok | fallback_hold | claude_limit
     decision: Decision | None = None
     model: str = ""
     prompt_hash: str = ""
@@ -179,11 +181,13 @@ class ClaudeBrain:
         (self.cache_dir / f"{key}.json").write_text(json.dumps(payload))
 
     def decide(self, messages: list[dict], model: str, valid_ids: set[str]) -> BrainResult:
-        key = self._key(model, messages)
-        res = BrainResult(status="fallback_hold", model=model, prompt_hash=key[:12])
+        orig_key = self._key(model, messages)
+        res = BrainResult(status="fallback_hold", model=model, prompt_hash=orig_key[:12])
         convo = list(messages)
         for attempt in range(2):                       # original + one repair
             cached = self._cache_get(self._key(model, convo))
+            if cached and detect_limit_message(cached.get("text", ""))[0]:
+                cached = None                          # never trust a poisoned entry
             try:
                 if cached:
                     text, usage, cost, was_cached = cached["text"], cached["usage"], cached["cost_usd"], True
@@ -195,7 +199,10 @@ class ClaudeBrain:
                                            purpose="decision" if attempt == 0 else "repair")
                     text, usage, cost, was_cached = out.text, out.usage, out.cost_usd, False
                     res.calls += 1
-                    self._cache_put(self._key(model, convo), {"text": text, "usage": usage, "cost_usd": cost, "model": model})
+            except ClaudeLimitError as e:
+                res.status, res.error = "claude_limit", redact(f"claude usage limit: {e}")
+                log.error(res.error)
+                return res
             except ClaudeError as e:
                 res.error = redact(f"claude call failed: {e}")
                 log.error(res.error)
@@ -207,6 +214,8 @@ class ClaudeBrain:
                 res.decision = parse_decision(text, valid_ids)
                 res.status = "ok"
                 res.error = None
+                # cache only VALID answers, under the original prompt key (so a resumed run is deterministic)
+                self._cache_put(orig_key, {"text": text, "usage": res.usage, "cost_usd": res.cost_usd, "model": model})
                 return res
             except DecisionParseError as e:
                 res.error = f"parse failure: {e}"

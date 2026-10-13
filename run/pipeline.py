@@ -101,6 +101,7 @@ class DecisionPipeline:
         self.prev_notes: str | None = None
         self.prev_risk: str | None = None
         self.halts = 0
+        self.limit_blocked = False                  # backtest circuit breaker once the Claude limit cannot be waited out
         self.last_kdf: pd.DataFrame | None = None
         self.last_asof: pd.Timestamp | None = None
         self.stats = {"calls": 0, "cost_usd": 0.0, "prompt_tokens": 0, "completion_tokens": 0,
@@ -178,6 +179,11 @@ class DecisionPipeline:
         if cfg.use_claude:
             model, deep = self._model_for(date)
             msgs = build_messages(label, feats, kdf, view, self.masker, market, self.prev_notes, self.prev_risk, self.limits, KRONOS.pred_len)
+            if self.limit_blocked:
+                self.stats["fallback_holds"] += 1
+                meta.update(status="claude_limit", error="Claude usage limit not cleared; decision skipped")
+                self._record(date, meta, None)
+                return Plan(None, meta=meta)
             br = self.brain.decide(msgs, model, self.masker.ids())
             self.stats["calls"] += br.calls
             self.stats["cost_usd"] += br.cost_usd
@@ -187,7 +193,10 @@ class DecisionPipeline:
                         cost_usd=round(br.cost_usd, 6), cached=br.cached)
             if br.status != "ok" or br.decision is None:
                 self.stats["fallback_holds"] += 1
-                meta.update(status="fallback_hold", error=br.error)
+                if br.status == "claude_limit":
+                    self.stats["limit_hits"] = self.stats.get("limit_hits", 0) + 1
+                    self.limit_blocked = cfg.mode == "backtest"
+                meta.update(status=br.status if br.status == "claude_limit" else "fallback_hold", error=br.error)
                 self._record(date, meta, None)
                 return Plan(None, meta=meta)
             d = br.decision

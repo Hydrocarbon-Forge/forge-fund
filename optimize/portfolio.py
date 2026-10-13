@@ -137,6 +137,9 @@ def optimize_weights(claude_weights: dict[str, float], returns: pd.DataFrame,
         weights = (inv / inv.sum() * budget).to_dict()
 
     final = clamp_weights(weights, limits, equity)
+    if weights and not final:
+        notes.append("every position fell below the minimum notional after sizing")
+        return OptResult({}, "empty", budget, {t: float(v) for t, v in mu.items()}, notes)
     bad = check_limits(final, limits, equity)
     if bad:                                  # defence in depth: should be impossible
         notes.append(f"limit violations after clamp: {bad}")
