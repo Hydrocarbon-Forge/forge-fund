@@ -153,3 +153,17 @@ def test_min_notional_drops_tiny_positions_for_small_equity():
     assert "T00" in mid.weights and "T02" not in mid.weights
     assert check_limits(mid.weights, equity=4000.0) == []
     assert all(w * 4000.0 >= 500.0 - 1e-6 for w in mid.weights.values())
+
+
+def test_trimming_to_max_positions_keeps_claude_total_exposure():
+    """Regression: Claude listed 14 names (77% invested); trimming to 10 must not shrink the book to ~55%."""
+    import numpy as np
+    import pandas as pd
+    from optimize.portfolio import optimize_weights
+    rng = np.random.default_rng(3)
+    cols = [f"T{i:02d}" for i in range(14)]
+    rets = pd.DataFrame(rng.normal(0.0004, 0.012, (300, 14)), columns=cols)
+    claude = {c: 0.055 for c in cols}                      # sums to 0.77
+    res = optimize_weights(claude, rets, None, equity=100_000)
+    assert res.method == "mean_risk" and len(res.weights) <= 10
+    assert sum(res.weights.values()) == pytest.approx(0.77, abs=0.01)

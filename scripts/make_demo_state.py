@@ -2,7 +2,7 @@
 """Write DEMO state files so the dashboard can be tried without a live engine.
 
     .venv/bin/python scripts/make_demo_state.py [DIR]
-    FORGE_ROOT=DIR .venv/bin/python -m api.server      # then open http://127.0.0.1:8904
+    FORGE_ROOT=DIR .venv/bin/python -m api.server      # then open http://127.0.0.1:8905
 
 With no DIR a fresh temp directory is created and its path is printed. The script
 refuses to write into the project's real state/, logs/, backtests/ or data/ folders.

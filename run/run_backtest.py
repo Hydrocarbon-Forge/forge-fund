@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from dataclasses import replace
 import logging
 import sys
@@ -114,6 +115,10 @@ def main(argv: list[str] | None = None) -> int:
     out = paths.backtests / run_id
     out.mkdir(parents=True, exist_ok=True)
     setup_logging(out / "run.log", console=True)
+    # reproducibility: freeze the exact market data this run saw (the live store is refreshed by cron/run_daily)
+    for f in ("ohlcv_daily.parquet", "meta.json"):
+        if (paths.data / f).exists():
+            shutil.copy2(paths.data / f, out / ("data_snapshot_" + f))
     log.info("run_id=%s freq=%s claude=%s kronos=%s anonymize=%s", run_id, args.freq, not args.no_claude,
              not args.no_kronos, not args.no_anonymize)
 

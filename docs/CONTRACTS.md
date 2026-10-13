@@ -93,4 +93,4 @@ pydantic v2 models `Holding(weight, rationale)`, `Decision(holdings, cash, notes
 
 ### `api/app.py`
 `create_app(paths=None) -> FastAPI`; module-level `app = create_app()`; `python -m api.server` runs uvicorn on
-`127.0.0.1:8904` (host/port from `forge.config.DASHBOARD_HOST/PORT`).
+`127.0.0.1:8905` (SPEC says 8904, but that port is held by another local service; host/port from `forge.config.DASHBOARD_HOST/PORT`).

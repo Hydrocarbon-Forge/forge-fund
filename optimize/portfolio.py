@@ -97,7 +97,10 @@ def optimize_weights(claude_weights: dict[str, float], returns: pd.DataFrame,
 
     X = window[cands].fillna(0.0)
     claude_s = pd.Series({t: cw[t] for t in cands})
-    budget = min(float(claude_s.sum()), max_investable(limits), len(cands) * limits.max_single)
+    # Budget = the exposure Claude asked for across ALL its names (trimming to max_positions must not shrink
+    # the book), bounded by the hard gross cap and by what n capped names can hold.
+    claude_total = float(sum(cw.values()))
+    budget = min(claude_total, max_investable(limits), len(cands) * limits.max_single)
     if budget <= 0.0:
         return OptResult({}, "empty", 0.0, notes=notes + ["zero budget"])
     sigma = X.std(ddof=0)

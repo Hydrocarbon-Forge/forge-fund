@@ -178,7 +178,8 @@ Do **not** attempt this without a human decision, a funded broker account and an
   prompt hash for resumability, not for reproducibility of a fresh run).
 * Kronos-mini is a very small model; its measured IC is reported, not assumed.
 * The 80% gross cap structurally lags a fully-invested benchmark in rising markets.
-* Dashboard port 8905 must be free; a different local service may hold it (see `docs/`/final notes).
+* **Port deviation from the spec**: SPEC.md asks for `127.0.0.1:8904`, but that port is held by another local service
+  (Forge Office), so the dashboard uses **8905** (`forge/config.py: DASHBOARD_PORT`). Change that one constant if 8904 is freed.
 
 ## Layout & conventions
 Python 3.14 only. `FORGE_ROOT` redirects `data/ state/ logs/ backtests/` (tests use a tmp dir).
