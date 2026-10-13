@@ -21,6 +21,7 @@ import pandas as pd
 from brain.claude_client import ClaudeClient, ClaudeError, ClaudeLimitError, detect_limit_message
 from brain.schema import Decision, DecisionParseError, parse_decision
 from forge.config import LIMITS, Limits, get_paths, redact
+from forge.risk import is_crypto
 from forge.types import PortfolioView
 
 log = logging.getLogger("forge.brain")
@@ -34,14 +35,16 @@ SCHEMA_EXAMPLE = ('{"holdings": {"<ID>": {"weight": 0.12, "rationale": "<=25 wor
 
 def system_prompt(limits: Limits = LIMITS) -> str:
     return (
-        "You are the portfolio manager of a small PAPER-TRADING equity fund investing in US large caps. "
-        "Once per rebalance you output target portfolio weights.\n"
+        "You are the portfolio manager of a small PAPER-TRADING fund investing in US large caps and crypto "
+        "(stocks + crypto, one fund). Once per rebalance you output target portfolio weights.\n"
         "HARD RULES (code enforces them again, so violations are simply clipped):\n"
         f"- Long-only. At most {limits.max_positions} holdings. At most {limits.max_single:.0%} in any one name.\n"
         f"- Total invested at most {limits.max_gross:.0%} of equity (so cash >= {1 - limits.max_gross:.0%}). Weights are fractions of TOTAL equity.\n"
+        f"- Total crypto combined at most {limits.crypto_cap:.0%} of equity.\n"
         "- Only use ids that appear in the UNIVERSE table. Never invent ids.\n"
-        "MANDATE: this is a long-only equity fund, not a market-timing vehicle. Its job is to hold a diversified set of "
-        "the best-looking large caps. The normal state is roughly 60-80% invested across 6-10 names. Hold more than 50% "
+        "MANDATE: this is a long-only equity fund (with select crypto), not a market-timing vehicle. Its job is to hold a diversified set of "
+        "the best-looking large caps and select crypto. The normal state is roughly 60-80% invested across 6-10 names. Crypto is fractionally "
+        f"sizeable and capped at {limits.crypto_cap:.0%} in aggregate. Hold more than 50% "
         "cash ONLY when the INDEX line shows concrete stress RIGHT NOW (drawdown from its 52-week high worse than -10%, "
         "or 20-day volatility above ~25%). Sitting mostly in cash for an extended period is a failure of the mandate, "
         "not a conservative choice. Higher cash is a response to stress visible in today's data, never a standing preference.\n"
@@ -59,6 +62,7 @@ def system_prompt(limits: Limits = LIMITS) -> str:
         "every review is decided fresh from the data and the current holdings). "
         "risk_view: your overall market risk assessment."
     )
+
 
 
 # --------------------------------------------------------------------------------- anonymisation
@@ -133,6 +137,9 @@ def build_messages(label: str, features: pd.DataFrame, kronos: pd.DataFrame | No
                    f"positive over 20d {rg['up20'] * 100:.0f}% / 60d {rg['up60'] * 100:.0f}% | median r20 {_pct(rg['med_r20'])}% "
                    f"r60 {_pct(rg['med_r60'])}% | dispersion of r20 {rg['disp_r20'] * 100:.1f}pp | median vol20 {rg['med_vol20'] * 100:.0f}% | "
                    f"within 10% of 52w high {rg['near_high'] * 100:.0f}%") if rg else "UNIVERSE REGIME: unavailable"
+    crypto_ids = [masker.to_id(t) for t in tickers if is_crypto(t, limits)]
+    asset_line = (f"ASSET CLASSES: Crypto names (aggregate cap {limits.crypto_cap:.0%}, fractionally sizeable): "
+                  f"{', '.join(crypto_ids) if crypto_ids else 'none'}. All other names are US equities.")
     user = (
         f"AS OF: {label} (decision for the next open; you only see data through the prior close)\n"
         f"FUND: equity ${view.equity:,.0f} | cash {cash_pct * 100:.0f}% | since inception {_pct(since, 2)}% | "
@@ -140,6 +147,7 @@ def build_messages(label: str, features: pd.DataFrame, kronos: pd.DataFrame | No
         f"CURRENT HOLDINGS: {hold}\n"
         f"MARKET CONTEXT: {market_line}\n"
         f"{regime_line}\n"
+        f"{asset_line}\n"
         f"UNIVERSE ({len(rows)} names). Columns, pipe-separated: id|r1|r5|r20|r60 (% price change over 1/5/20/60 trading days)|"
         f"vol (annualised 20d volatility %)|rsi (14d)|d50|d200 (% vs 50/200-day average)|p52 (position in 52-week range 0-1)|"
         f"volx (20d vs 60d avg volume)|kr_ret (Kronos mean forecast % return over next {horizon} trading days)|"

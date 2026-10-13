@@ -22,7 +22,7 @@ from forge.config import BENCHMARK, KRONOS, LIMITS, Limits, claude_settings, get
 from forge.data import load_panel
 from forge.risk import clamp_weights, loss_cap_breached, max_investable
 from forge.types import Plan, PortfolioView
-from forge.universe import SP100
+from forge.universe import SP100, UNIVERSE
 from kronos.forecast import KronosForecaster, forecast_with_cache
 from optimize.portfolio import optimize_weights
 
@@ -43,7 +43,8 @@ class Market:
     def from_store(cls, start: str | None = None, universe: list[str] | None = None) -> "Market":
         fields = ("open", "high", "low", "close", "volume")
         panels = {f: load_panel(f, start=start) for f in fields}
-        return cls(panels, universe or SP100)
+        return cls(panels, universe or UNIVERSE)
+
 
     def prev_trading_day(self, date: str) -> pd.Timestamp | None:
         prior = self.dates[self.dates < pd.Timestamp(date)]

@@ -123,6 +123,20 @@ def test_system_prompt_states_the_limits():
     assert "25%" in sys_text
     assert "80%" in sys_text
     assert "cash >= 20%" in sys_text
+    assert "Total crypto combined at most 30%" in sys_text
+    assert "stocks + crypto, one fund" in sys_text
+
+
+def test_prompt_distinguishes_crypto_and_equities(view):
+    # With a universe containing both stocks and crypto
+    close = make_close(["AAPL", "BTC-USD"], n_days=300, seed=5)
+    feats = compute_features(close, make_volume(close, seed=5), close.index[-1])
+    msgs = build_messages(LABEL, feats, None, view, Masker(["AAPL", "BTC-USD"], enabled=False), MARKET, None, None)
+    user = msgs[1]["content"]
+    assert "ASSET CLASSES:" in user
+    assert "BTC-USD" in user
+    assert "30%" in user
+
 
 
 def test_json_example_uses_ids_from_the_table(features, kronos_df, view):

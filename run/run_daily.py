@@ -27,8 +27,9 @@ from forge.calendar import decision_date, market_open_now
 from forge.config import BENCHMARK, KRONOS, PAPER_CAPITAL, get_paths
 from forge.data import latest_prices, update_store
 from forge.logging_setup import setup_logging
-from forge.universe import SP100
+from forge.universe import SP100, UNIVERSE
 from kronos.forecast import KronosForecaster, forecast_with_cache
+
 from run.pipeline import DecisionPipeline, Market, PipelineConfig
 
 log = logging.getLogger("forge.daily")
