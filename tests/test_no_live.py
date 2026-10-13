@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC_DIRS = ["forge", "engine", "brain", "kronos", "optimize", "run", "api", "scripts"]
 FORBIDDEN = [r"nautilus_trader\.live", r"\bTradingNode\b", r"LiveExecClient", r"LiveDataClient", r"\bib_insync\b",
              r"\balpaca", r"\bccxt\b", r"\bbinance\b", r"\binteractive_brokers\b", r"\bfreqtrade\b", r"\bhummingbot\b",
+             r"\bcoinbase\b", r"\bkraken\b", r"\bweb3\b",
              r"AccountType\.MARGIN"]
 
 
@@ -42,10 +43,19 @@ def test_mode_is_paper_and_venue_is_simulated_cash_account():
     assert "nautilus_trader.backtest" in sim
 
 
+def test_crypto_uses_simulated_venue_only():
+    from engine.sim import VENUE, make_crypto
+    inst = make_crypto("BTC-USD")
+    assert inst.id.venue == VENUE
+    assert str(VENUE) == "SIM"
+
+
+
 def test_dashboard_binds_lan_on_8905():
     assert cfg.DASHBOARD_HOST == "192.168.1.201" and cfg.DASHBOARD_PORT == 8905
 
 
 def test_no_broker_keys_in_environment_template():
     env_names = set(re.findall(r"^([A-Z_]+)=", (ROOT / ".env").read_text(), flags=re.M)) if (ROOT / ".env").exists() else set()
-    assert not any(k for k in env_names if any(w in k for w in ("BROKER", "ALPACA", "IBKR", "BINANCE", "API_SECRET")))
+    assert not any(k for k in env_names if any(w in k for w in ("BROKER", "ALPACA", "IBKR", "BINANCE", "COINBASE", "KRAKEN", "API_SECRET")))
+
