@@ -183,7 +183,7 @@ class DecisionPipeline:
                                   KRONOS.pred_len, regime=universe_regime(feats))
             if self.limit_blocked:
                 self.stats["fallback_holds"] += 1
-                meta.update(status="claude_limit", error="Claude usage limit not cleared; decision skipped")
+                meta.update(brain="hold", status="claude_limit", error="Claude usage limit not cleared; decision skipped")
                 self._record(date, meta, None)
                 return Plan(None, meta=meta)
             br = self.brain.decide(msgs, model, self.masker.ids())
@@ -191,14 +191,14 @@ class DecisionPipeline:
             self.stats["cost_usd"] += br.cost_usd
             self.stats["prompt_tokens"] += br.usage.get("prompt_tokens", 0)
             self.stats["completion_tokens"] += br.usage.get("completion_tokens", 0)
-            meta.update(model=model, deep_review=deep, prompt_hash=br.prompt_hash, usage=br.usage,
+            meta.update(brain=br.brain, model=br.model or model, deep_review=deep, prompt_hash=br.prompt_hash, usage=br.usage,
                         cost_usd=round(br.cost_usd, 6), cached=br.cached)
             if br.status != "ok" or br.decision is None:
                 self.stats["fallback_holds"] += 1
                 if br.status == "claude_limit":
                     self.stats["limit_hits"] = self.stats.get("limit_hits", 0) + 1
                     self.limit_blocked = cfg.mode == "backtest"
-                meta.update(status=br.status if br.status == "claude_limit" else "fallback_hold", error=br.error)
+                meta.update(brain=br.brain, status=br.status if br.status == "claude_limit" else "fallback_hold", error=br.error)
                 self._record(date, meta, None)
                 return Plan(None, meta=meta)
             d = br.decision
@@ -209,7 +209,7 @@ class DecisionPipeline:
             self.prev_notes, self.prev_risk = d.notes, d.risk_view
         else:
             claude_w = rule_weights(feats, kdf, self.limits)
-            meta.update(status="no_claude", model="rules", risk_view="med", cash=round(1 - sum(claude_w.values()), 4),
+            meta.update(brain="rules", status="no_claude", model="rules", risk_view="med", cash=round(1 - sum(claude_w.values()), 4),
                         notes="rule baseline (no Claude)",
                         claude_holdings={t: {"weight": w, "rationale": "rule baseline"} for t, w in claude_w.items()})
 
@@ -232,16 +232,18 @@ class DecisionPipeline:
         if meta["status"] in ("init",):
             meta["status"] = "ok"
         self.stats["decisions"] += 1
-        log.info("%s status=%s model=%s positions=%d invested=%.0f%% risk=%s cost=$%.4f", date, meta["status"],
-                 meta.get("model"), len(final), 100 * sum(final.values()), meta.get("risk_view"), meta.get("cost_usd", 0.0))
+        log.info("%s status=%s brain=%s model=%s positions=%d invested=%.0f%% risk=%s cost=$%.4f", date, meta["status"],
+                 meta.get("brain"), meta.get("model"), len(final), 100 * sum(final.values()), meta.get("risk_view"), meta.get("cost_usd", 0.0))
         self._record(date, meta, final)
         return Plan(final, False, meta)
 
     # ------------------------------------------------------------------------------ persistence
     def _record(self, date: str, meta: dict, final: dict | None) -> None:
         rec = {"kind": "decision", "ts": datetime.now(timezone.utc).isoformat(), "date": date,
-               "prompt_hash": meta.get("prompt_hash"), "status": meta.get("status"), "decision": meta}
+               "prompt_hash": meta.get("prompt_hash"), "status": meta.get("status"), "brain": meta.get("brain"), "decision": meta}
         if self.cfg.decisions_path:
             self.cfg.decisions_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.cfg.decisions_path.open("a") as f:
+                f.write(json.dumps(rec, default=str) + "\n")
             with self.cfg.decisions_path.open("a") as f:
                 f.write(json.dumps(rec, default=str) + "\n")

@@ -100,7 +100,8 @@ def run_cycle(*, paths: Paths, market, decision_date: str, live_prices: dict[str
              "price_source": price_source, "prices": {k: float(v) for k, v in live_prices.items()},
              "plan": plan_to_json(plan)}
     summary = {"date": decision_date, "inception": inception, "equity": res.final_equity, "cash": res.final_cash,
-               "n_positions": len(res.final_positions), "status": plan.meta.get("status"), "halted": plan.halted,
+               "n_positions": len(res.final_positions), "status": plan.meta.get("status"),
+               "brain": plan.meta.get("brain", "claude"), "halted": plan.halted,
                "n_fills_today": int((res.fills["date"] == decision_date).sum()) if len(res.fills) else 0}
     if persist:
         write_ledger(paths, ledger + [entry])
@@ -168,7 +169,7 @@ def write_state(paths: Paths, res: SimResult, plan: Plan, entry: dict, inception
 
     m = plan.meta
     _atomic_write(st / "latest_decision.json", json.dumps({
-        "date": today, "ts": entry["ts"], "model": m.get("model"), "status": m.get("status"),
+        "date": today, "ts": entry["ts"], "brain": m.get("brain", "claude"), "model": m.get("model"), "status": m.get("status"),
         "risk_view": m.get("risk_view"), "cash": m.get("cash"), "notes": m.get("notes"),
         "prompt_hash": m.get("prompt_hash"), "usage": m.get("usage"), "cost_usd": m.get("cost_usd"),
         "claude_holdings": m.get("claude_holdings") or {}, "final_weights": plan.targets or {},

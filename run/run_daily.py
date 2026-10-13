@@ -54,10 +54,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--resume", action="store_true", help="clear a loss-cap halt and exit")
     ap.add_argument("--no-fetch", action="store_true", help="skip the data refresh")
     ap.add_argument("--no-claude", action="store_true", help="rule baseline instead of Claude")
+    ap.add_argument("--no-gemini", action="store_true", help="disable Gemini fallback (HOLD on Claude failure)")
     ap.add_argument("--no-kronos", action="store_true", help="skip the Kronos signal")
     ap.add_argument("--model", default=None, help="force one Claude model")
     ap.add_argument("--date", default=None, help="override decision date (testing)")
     args = ap.parse_args(argv)
+
+    if args.no_gemini:
+        os.environ["GEMINI_FALLBACK"] = "false"
 
     paths = get_paths().ensure()
     setup_logging(paths.logs / "engine.log", console=True)
@@ -125,13 +129,13 @@ def main(argv: list[str] | None = None) -> int:
             _write_forecasts(paths, pipe.last_kdf, pipe.last_asof)
 
         res = summary.pop("result")
-        log.info("cycle %s: status=%s equity=$%.2f cash=$%.2f positions=%d fills_today=%d halted=%s",
-                 dd, summary["status"], summary["equity"], summary["cash"], summary["n_positions"],
+        log.info("cycle %s: status=%s brain=%s equity=$%.2f cash=$%.2f positions=%d fills_today=%d halted=%s",
+                 dd, summary["status"], summary.get("brain", "claude"), summary["equity"], summary["cash"], summary["n_positions"],
                  summary["n_fills_today"], summary["halted"])
         for t, p in sorted(res.final_positions.items(), key=lambda kv: -kv[1]["value"]):
             qty_str = f"{int(p['qty']):d}" if float(p["qty"]).is_integer() else f"{p['qty']:.6f}"
             log.info("  %-6s qty=%s  avg=%9.2f  last=%9.2f  w=%5.1f%%", t, qty_str.rjust(8), p["avg_px"], p["last_px"], 100 * p["weight"])
-        log.info("Claude usage this run: %s", pipe.stats)
+        log.info("Decider usage this run: %s", pipe.stats)
         if args.dry_run:
             log.info("dry-run: nothing written")
         return 3 if summary["halted"] else 0
