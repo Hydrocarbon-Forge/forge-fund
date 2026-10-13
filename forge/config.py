@@ -16,9 +16,10 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# Fixed by SPEC: dashboard is localhost-only on 8904.
+# Dashboard is localhost-only. 8904 is taken by Nathan's forge-office,
+# 8901-8903 by forge-console, 8910 by the Claude server -> use 8905.
 DASHBOARD_HOST = "127.0.0.1"
-DASHBOARD_PORT = 8904
+DASHBOARD_PORT = 8905
 
 BENCHMARK = "SPY"
 STARTING_CAPITAL = 100_000.0

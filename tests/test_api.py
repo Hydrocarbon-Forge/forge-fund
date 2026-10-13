@@ -524,13 +524,13 @@ def test_server_main_refuses_non_loopback_hosts(monkeypatch, host):
     assert issubclass(server.NonLoopbackHostError, ValueError)
 
 
-def test_server_main_defaults_to_loopback_8904(monkeypatch):
+def test_server_main_defaults_to_loopback_8905(monkeypatch):
     calls = []
     monkeypatch.setattr(server.uvicorn, "run", lambda *a, **k: calls.append((a, k)))
     server.main()
     server.main(host="localhost", port=8905)
     (a0, k0), (a1, k1) = calls
-    assert a0 == ("api.app:app",) and k0["host"] == "127.0.0.1" and k0["port"] == 8904
+    assert a0 == ("api.app:app",) and k0["host"] == "127.0.0.1" and k0["port"] == 8905
     assert k0["log_level"] == "info"
     assert k1["host"] == "localhost" and k1["port"] == 8905
 

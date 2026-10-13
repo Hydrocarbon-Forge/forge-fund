@@ -1,4 +1,4 @@
-"""Run the localhost dashboard: ``python -m api.server`` (SPEC: 127.0.0.1:8904 only).
+"""Run the localhost dashboard: ``python -m api.server`` (SPEC: 127.0.0.1:8905 only).
 
 The dashboard exposes portfolio and decision data, so the host must be a loopback
 address. ``main`` refuses anything else before uvicorn is imported or started.

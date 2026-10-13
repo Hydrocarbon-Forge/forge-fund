@@ -53,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--resume", action="store_true", help="clear a loss-cap halt and exit")
     ap.add_argument("--no-fetch", action="store_true", help="skip the data refresh")
     ap.add_argument("--no-claude", action="store_true", help="rule baseline instead of Claude")
+    ap.add_argument("--no-kronos", action="store_true", help="skip the Kronos signal")
     ap.add_argument("--model", default=None, help="force one Claude model")
     ap.add_argument("--date", default=None, help="override decision date (testing)")
     args = ap.parse_args(argv)
@@ -110,11 +111,11 @@ def main(argv: list[str] | None = None) -> int:
         log.info("decision date %s | price source: %s | %d prices", dd, source, len(prices))
 
         brain = None if args.no_claude else ClaudeBrain(ClaudeClient(log_path=paths.logs / "decision_log.jsonl"), use_cache=False)
-        cfg = PipelineConfig(mode="paper", anonymize=False, use_claude=not args.no_claude, forced_model=args.model,
+        cfg = PipelineConfig(mode="paper", anonymize=False, use_claude=not args.no_claude, use_kronos=not args.no_kronos, forced_model=args.model,
                              persist_halt=not args.dry_run, state_dir=paths.state,
                              decisions_path=None if args.dry_run else paths.logs / "decision_log.jsonl",
                              prior_event_dates=[r["date"] for r in ledger if r["date"] != dd])
-        pipe = DecisionPipeline(mkt, cfg, brain, KronosForecaster())
+        pipe = DecisionPipeline(mkt, cfg, brain, None if args.no_kronos else KronosForecaster())
 
         summary = run_cycle(paths=paths, market=mkt, decision_date=dd, live_prices=prices, price_source=source,
                             live_decide=pipe.decide, universe=mkt.universe, capital=STARTING_CAPITAL,
