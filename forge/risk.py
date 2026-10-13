@@ -56,6 +56,12 @@ def _cap_and_redistribute(w: dict[str, float], total: float, cap: float) -> dict
     return {t: v for t, v in fixed.items() if v > EPS}
 
 
+def is_crypto(ticker: str, limits: Limits = LIMITS) -> bool:
+    """Return True if ``ticker`` is a known crypto symbol or crypto pair."""
+    t = str(ticker).upper()
+    return t in {c.upper() for c in limits.crypto_symbols} or t.endswith("-USD")
+
+
 def max_investable(limits: Limits = LIMITS) -> float:
     """Largest invested fraction allowed by gross cap and cash floor."""
     return min(limits.max_gross, 1.0 - limits.cash_floor)
@@ -66,8 +72,9 @@ def clamp_weights(weights: dict[str, float], limits: Limits = LIMITS,
     """Return a compliant long-only weight vector.
 
     Order: drop invalid -> keep top ``max_positions`` -> cap total at gross/cash limits (only ever
-    scales DOWN, never up) -> cap each name at ``max_single`` with redistribution -> drop names whose
-    notional (``weight * equity``) is below ``min_notional`` (when ``equity`` is given).
+    scales DOWN, never up) -> cap each name at ``max_single`` with redistribution -> cap aggregate crypto
+    at ``crypto_cap`` -> drop names whose notional (``weight * equity``) is below ``min_notional``
+    (when ``equity`` is given).
     """
     w = _clean(weights)
     if not w:
@@ -76,6 +83,12 @@ def clamp_weights(weights: dict[str, float], limits: Limits = LIMITS,
     w = dict(top)
     total = min(sum(w.values()), max_investable(limits))
     w = _cap_and_redistribute(w, total, limits.max_single)
+    crypto_keys = [t for t in w if is_crypto(t, limits)]
+    crypto_sum = sum(w[t] for t in crypto_keys)
+    if crypto_sum > limits.crypto_cap + EPS:
+        scale = limits.crypto_cap / crypto_sum
+        for t in crypto_keys:
+            w[t] *= scale
     if equity is not None and equity > 0:
         floor = limits.min_notional(equity)
         w = {t: v for t, v in w.items() if v * equity >= floor}
@@ -99,6 +112,10 @@ def check_limits(weights: dict[str, float], limits: Limits = LIMITS, equity: flo
         v.append(f"gross {gross:.4f} > {limits.max_gross}")
     if 1.0 - gross < limits.cash_floor - 1e-5:
         v.append(f"cash {1.0 - gross:.4f} < floor {limits.cash_floor}")
+    crypto_keys = [t for t in w if is_crypto(t, limits)]
+    crypto_gross = sum(w[t] for t in crypto_keys)
+    if crypto_gross > limits.crypto_cap + 1e-5:
+        v.append(f"crypto gross {crypto_gross:.4f} > {limits.crypto_cap}")
     return v
 
 
@@ -113,8 +130,12 @@ def order_sanity(ticker: str, side: str, qty: float, price: float, equity: float
     """Reject nonsensical orders (bad qty/price, oversized notional, price far from last close)."""
     if side not in ("BUY", "SELL"):
         return OrderCheck(False, f"bad side {side!r}")
-    if not (isinstance(qty, (int, float)) and math.isfinite(qty) and qty > 0 and float(qty).is_integer()):
-        return OrderCheck(False, f"{ticker}: qty must be a positive whole number, got {qty!r}")
+    if is_crypto(ticker, limits):
+        if not (isinstance(qty, (int, float)) and math.isfinite(qty) and qty > 1e-9):
+            return OrderCheck(False, f"{ticker}: qty must be a positive number, got {qty!r}")
+    else:
+        if not (isinstance(qty, (int, float)) and math.isfinite(qty) and qty > 0 and float(qty).is_integer()):
+            return OrderCheck(False, f"{ticker}: qty must be a positive whole number, got {qty!r}")
     if not (math.isfinite(price) and price > 0):
         return OrderCheck(False, f"{ticker}: bad price {price!r}")
     if equity <= 0:

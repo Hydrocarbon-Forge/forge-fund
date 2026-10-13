@@ -96,6 +96,10 @@ def get_paths() -> Paths:
 
 
 # ------------------------------------------------------------------- risk limits
+CRYPTO_CAP = 0.30
+CRYPTO_SYMBOLS: tuple[str, ...] = ("BTC-USD", "ETH-USD", "SOL-USD")
+
+
 @dataclass(frozen=True)
 class Limits:
     """Hard limits, enforced in code after optimization (see forge/risk.py)."""
@@ -110,6 +114,8 @@ class Limits:
     max_order_pct_equity: float = 0.30   # sanity: no single order > 30% of equity
     price_sanity_pct: float = 0.25  # reject fill price >25% away from last close
     rebalance_band: float = 0.01    # ignore weight changes smaller than 1% of equity
+    crypto_cap: float = CRYPTO_CAP  # max combined weight across all crypto
+    crypto_symbols: tuple[str, ...] = CRYPTO_SYMBOLS
 
     def min_notional(self, equity: float | None) -> float:
         """Dollar floor that scales with the book. A fixed $500 floor makes a $200 book

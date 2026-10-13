@@ -3,7 +3,7 @@ import math
 import pytest
 
 from forge.config import LIMITS, Limits
-from forge.risk import check_limits, clamp_weights, loss_cap_breached, max_investable, order_sanity
+from forge.risk import check_limits, clamp_weights, is_crypto, loss_cap_breached, max_investable, order_sanity
 
 
 def test_max_investable_is_gross_cap():
@@ -87,3 +87,41 @@ def test_loss_cap():
     assert loss_cap_breached(100_000, 98_100)[0] is False
     assert loss_cap_breached(None, 50_000) == (False, 0.0)
     assert math.isclose(loss_cap_breached(100_000, 101_000)[1], 0.01)
+
+
+def test_is_crypto():
+    assert is_crypto("BTC-USD") is True
+    assert is_crypto("eth-usd") is True
+    assert is_crypto("SOL-USD") is True
+    assert is_crypto("AAPL") is False
+    assert is_crypto("BRK-B") is False
+
+
+def test_clamp_crypto_aggregate_cap():
+    # 3 crypto names sum to 0.60; single names are <= 0.25, but total crypto must be capped at 0.30
+    w = clamp_weights({"BTC-USD": 0.20, "ETH-USD": 0.20, "SOL-USD": 0.20, "AAPL": 0.20})
+    crypto_sum = sum(v for t, v in w.items() if is_crypto(t))
+    assert crypto_sum <= LIMITS.crypto_cap + 1e-6
+    assert w["AAPL"] == pytest.approx(0.20, abs=1e-5)
+    assert check_limits(w) == []
+
+
+def test_check_limits_flags_crypto_cap_violation():
+    v = check_limits({"BTC-USD": 0.20, "ETH-USD": 0.15})  # 0.35 > 0.30
+    assert any("crypto gross" in x for x in v)
+
+
+def test_order_sanity_crypto_allows_fractional():
+    # Crypto permits fractional qty (notional $1,000 > min $500 at $100k equity)
+    r = order_sanity("BTC-USD", "BUY", 0.02, 50_000.0, 100_000)
+    assert r.ok is True, r.reason
+
+    # Crypto permits fractional qty at paper capital $200 (notional $25 > min $1 at $200 equity)
+    r_small = order_sanity("BTC-USD", "BUY", 0.0005, 50_000.0, 200)
+    assert r_small.ok is True, r_small.reason
+
+    # Stock rejects fractional qty
+    r_stock = order_sanity("AAPL", "BUY", 0.5, 150.0, 100_000)
+    assert r_stock.ok is False
+    assert "whole number" in r_stock.reason
+
