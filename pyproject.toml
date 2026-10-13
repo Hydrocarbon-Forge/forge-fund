@@ -1,0 +1,12 @@
+[project]
+name = "forge-fund"
+version = "0.1.0"
+description = "Paper-first AI hedge fund: Claude brain + Kronos signals + skfolio sizing + Nautilus paper engine"
+requires-python = ">=3.14"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning", "ignore::UserWarning"]
+markers = ["network: hits the real network (yfinance); deselect with -m 'not network'"]
