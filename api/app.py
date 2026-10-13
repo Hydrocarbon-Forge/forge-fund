@@ -31,8 +31,9 @@ from forge.config import MODE, STARTING_CAPITAL, Paths, get_paths, redact
 log = logging.getLogger("forge.dashboard")
 
 STATIC_INDEX = Path(__file__).resolve().parent / "static" / "index.html"
-# DNS-rebinding guard, on top of the loopback bind in api/server.py.
-ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+# DNS-rebinding guard. The dashboard now binds the box's LAN IP so Gavin can
+# open it from his device, so the allowlist carries that host alongside loopback.
+ALLOWED_HOSTS = ["127.0.0.1", "localhost", "192.168.1.201"]
 CSP = (
     "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
     "connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; "
