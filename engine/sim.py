@@ -220,7 +220,7 @@ class ForgeStrategy(Strategy):
             # rebalance band: skip small drifts on names we keep (full exits / new entries always trade)
             if cur > 0 and tgt > 0 and abs(delta) * ask / eq < self.limits.rebalance_band:
                 continue
-            if abs(delta) * ask < self.limits.min_notional and tgt > 0:
+            if abs(delta) * ask < self.limits.min_notional(eq) and tgt > 0:
                 continue          # sub-minimum top-up / trim: not worth trading
             if side == OrderSide.SELL and delta < 0:
                 out.append((t, -delta, bid))

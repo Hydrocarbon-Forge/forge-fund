@@ -14,6 +14,8 @@ DATE = None
 @pytest.fixture()
 def env(monkeypatch):
     names = write_store(get_paths().root, n_names=12, n_days=420, seed=4)
+    # this fixture's synthetic prices/expectations are sized for a $100k book
+    monkeypatch.setattr(run_daily, "PAPER_CAPITAL", 100_000.0)
     from forge.data import load_store
     df = load_store()
     last = df["date"].max()

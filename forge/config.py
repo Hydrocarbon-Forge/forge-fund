@@ -22,7 +22,12 @@ DASHBOARD_HOST = "192.168.1.201"
 DASHBOARD_PORT = 8905
 
 BENCHMARK = "SPY"
-STARTING_CAPITAL = 100_000.0
+# Live paper book = $200 (Gavin, 2026-10-14). Override with FORGE_PAPER_CAPITAL if you want
+# a different book size; the daily runner and dashboard read this.
+PAPER_CAPITAL = float(os.environ.get("FORGE_PAPER_CAPITAL", "200.0"))
+# Backtest default = $100k (all historical backtests in logs/ ran at this size).
+# Override with FORGE_STARTING_CAPITAL for one-off runs.
+STARTING_CAPITAL = float(os.environ.get("FORGE_STARTING_CAPITAL", "100_000.0"))
 MODE = "paper"  # structurally the only mode this codebase knows about
 
 
@@ -99,11 +104,20 @@ class Limits:
     max_single: float = 0.25        # max weight of one name (fraction of equity)
     max_gross: float = 0.80         # long-only => gross == invested fraction
     cash_floor: float = 0.10        # min cash fraction (subsumed by max_gross for long-only)
-    min_notional: float = 500.0     # drop / ignore positions & trades smaller than this
+    min_notional_frac: float = 0.005   # dust floor = 0.5% of equity ($500 at $100k, $1 at $200)
+    min_order_usd: float = 1.0      # absolute floor: a tiny book must still be able to buy 1 share
     loss_cap: float = 0.02          # single-run loss > 2% of equity => HALT
     max_order_pct_equity: float = 0.30   # sanity: no single order > 30% of equity
     price_sanity_pct: float = 0.25  # reject fill price >25% away from last close
     rebalance_band: float = 0.01    # ignore weight changes smaller than 1% of equity
+
+    def min_notional(self, equity: float | None) -> float:
+        """Dollar floor that scales with the book. A fixed $500 floor makes a $200 book
+        structurally untradeable (floor > whole book), so the floor is 0.5% of equity,
+        floored at $1 — identical to the old $500-at-$100k behaviour for large books."""
+        if equity is None:
+            return self.min_order_usd
+        return max(self.min_order_usd, self.min_notional_frac * equity)
 
 
 LIMITS = Limits()

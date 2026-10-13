@@ -1,0 +1,94 @@
+{
+ "as_of": "2026-10-13T20:12:06+00:00",
+ "mode": "paper",
+ "inception": "2026-10-13",
+ "starting_capital": 100000.0,
+ "cash": 23965.32,
+ "positions_value": 76346.69,
+ "equity": 100312.01,
+ "price_source": "last_close",
+ "halted": false,
+ "halt_reason": null,
+ "positions": [
+  {
+   "ticker": "BRK-B",
+   "qty": 42,
+   "avg_px": 517.65,
+   "last_px": 520.72,
+   "market_value": 21870.24,
+   "unrealized_pnl": 128.94,
+   "unrealized_pct": 0.005931,
+   "weight": 0.218022
+  },
+  {
+   "ticker": "CVX",
+   "qty": 59,
+   "avg_px": 215.02,
+   "last_px": 217.82,
+   "market_value": 12851.38,
+   "unrealized_pnl": 165.2,
+   "unrealized_pct": 0.013022,
+   "weight": 0.128114
+  },
+  {
+   "ticker": "GOOGL",
+   "qty": 32,
+   "avg_px": 352.76,
+   "last_px": 353.78,
+   "market_value": 11320.96,
+   "unrealized_pnl": 32.64,
+   "unrealized_pct": 0.002891,
+   "weight": 0.112857
+  },
+  {
+   "ticker": "ABBV",
+   "qty": 31,
+   "avg_px": 281.15,
+   "last_px": 274.31,
+   "market_value": 8503.61,
+   "unrealized_pnl": -212.04,
+   "unrealized_pct": -0.024329,
+   "weight": 0.084772
+  },
+  {
+   "ticker": "V",
+   "qty": 17,
+   "avg_px": 389.31,
+   "last_px": 396.11,
+   "market_value": 6733.87,
+   "unrealized_pnl": 115.6,
+   "unrealized_pct": 0.017467,
+   "weight": 0.067129
+  },
+  {
+   "ticker": "MSFT",
+   "qty": 11,
+   "avg_px": 541.2,
+   "last_px": 543.45,
+   "market_value": 5977.95,
+   "unrealized_pnl": 24.75,
+   "unrealized_pct": 0.004157,
+   "weight": 0.059594
+  },
+  {
+   "ticker": "NVDA",
+   "qty": 24,
+   "avg_px": 226.34,
+   "last_px": 228.52,
+   "market_value": 5484.48,
+   "unrealized_pnl": 52.32,
+   "unrealized_pct": 0.009632,
+   "weight": 0.054674
+  },
+  {
+   "ticker": "KO",
+   "qty": 40,
+   "avg_px": 89.8,
+   "last_px": 90.105,
+   "market_value": 3604.2,
+   "unrealized_pnl": 12.2,
+   "unrealized_pct": 0.003396,
+   "weight": 0.03593
+  }
+ ]
+}

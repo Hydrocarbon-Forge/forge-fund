@@ -1,0 +1,8 @@
+{"ts": "2026-10-13T13:35:02+00:00", "date": "2026-10-13", "ticker": "BRK-B", "side": "BUY", "qty": 42, "price": 517.65, "notional": 21741.3, "fee": 2.17, "realized_pnl": -2.17, "reason": "rebalance"}
+{"ts": "2026-10-13T13:35:02+00:00", "date": "2026-10-13", "ticker": "CVX", "side": "BUY", "qty": 59, "price": 215.02, "notional": 12686.18, "fee": 1.27, "realized_pnl": -1.27, "reason": "rebalance"}
+{"ts": "2026-10-13T13:35:02+00:00", "date": "2026-10-13", "ticker": "GOOGL", "side": "BUY", "qty": 32, "price": 352.76, "notional": 11288.32, "fee": 1.13, "realized_pnl": -1.13, "reason": "rebalance"}
+{"ts": "2026-10-13T13:35:02+00:00", "date": "2026-10-13", "ticker": "ABBV", "side": "BUY", "qty": 31, "price": 281.15, "notional": 8715.65, "fee": 0.87, "realized_pnl": -0.87, "reason": "rebalance"}
+{"ts": "2026-10-13T13:35:02+00:00", "date": "2026-10-13", "ticker": "V", "side": "BUY", "qty": 17, "price": 389.31, "notional": 6618.27, "fee": 0.66, "realized_pnl": -0.66, "reason": "rebalance"}
+{"ts": "2026-10-13T13:35:02+00:00", "date": "2026-10-13", "ticker": "MSFT", "side": "BUY", "qty": 11, "price": 541.2, "notional": 5953.2, "fee": 0.6, "realized_pnl": -0.6, "reason": "rebalance"}
+{"ts": "2026-10-13T13:35:02+00:00", "date": "2026-10-13", "ticker": "NVDA", "side": "BUY", "qty": 24, "price": 226.34, "notional": 5432.16, "fee": 0.54, "realized_pnl": -0.54, "reason": "rebalance"}
+{"ts": "2026-10-13T13:35:02+00:00", "date": "2026-10-13", "ticker": "KO", "side": "BUY", "qty": 40, "price": 89.8, "notional": 3592.0, "fee": 0.36, "realized_pnl": -0.36, "reason": "rebalance"}

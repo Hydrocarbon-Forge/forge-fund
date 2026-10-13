@@ -1,0 +1,16 @@
+{
+ "date": "2026-10-14",
+ "ts": "2026-10-13T20:12:06.413081+00:00",
+ "model": "haiku",
+ "status": "fallback_hold",
+ "risk_view": null,
+ "cash": null,
+ "notes": null,
+ "prompt_hash": "4e45b7c6d938",
+ "usage": {},
+ "cost_usd": 0.0,
+ "claude_holdings": {},
+ "final_weights": {},
+ "optimizer": null,
+ "error": "claude call failed: giving up after 7 attempt(s): network error (ConnectError)"
+}

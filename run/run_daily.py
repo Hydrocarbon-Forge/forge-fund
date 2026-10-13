@@ -24,7 +24,7 @@ from brain.claude_client import ClaudeClient
 from brain.decision import ClaudeBrain
 from engine.paper import read_ledger, run_cycle
 from forge.calendar import decision_date, market_open_now
-from forge.config import BENCHMARK, KRONOS, STARTING_CAPITAL, get_paths
+from forge.config import BENCHMARK, KRONOS, PAPER_CAPITAL, get_paths
 from forge.data import latest_prices, update_store
 from forge.logging_setup import setup_logging
 from forge.universe import SP100
@@ -118,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
         pipe = DecisionPipeline(mkt, cfg, brain, None if args.no_kronos else KronosForecaster())
 
         summary = run_cycle(paths=paths, market=mkt, decision_date=dd, live_prices=prices, price_source=source,
-                            live_decide=pipe.decide, universe=mkt.universe, capital=STARTING_CAPITAL,
+                            live_decide=pipe.decide, universe=mkt.universe, capital=PAPER_CAPITAL,
                             replace=args.force, persist=not args.dry_run)
         if pipe.last_kdf is not None and not args.dry_run:
             _write_forecasts(paths, pipe.last_kdf, pipe.last_asof)

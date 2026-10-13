@@ -77,7 +77,8 @@ def clamp_weights(weights: dict[str, float], limits: Limits = LIMITS,
     total = min(sum(w.values()), max_investable(limits))
     w = _cap_and_redistribute(w, total, limits.max_single)
     if equity is not None and equity > 0:
-        w = {t: v for t, v in w.items() if v * equity >= limits.min_notional}
+        floor = limits.min_notional(equity)
+        w = {t: v for t, v in w.items() if v * equity >= floor}
     # floor (not round) to 6dp so rounding can never push a sum over a cap
     return {t: math.floor(v * 1e6) / 1e6 for t, v in w.items()}
 
@@ -91,8 +92,8 @@ def check_limits(weights: dict[str, float], limits: Limits = LIMITS, equity: flo
     for t, x in w.items():
         if x > limits.max_single + 1e-5:
             v.append(f"{t} weight {x:.4f} > {limits.max_single}")
-        if equity and x * equity < limits.min_notional - 1e-6:
-            v.append(f"{t} notional {x * equity:.0f} < {limits.min_notional}")
+        if equity and x * equity < limits.min_notional(equity) - 1e-6:
+            v.append(f"{t} notional {x * equity:.0f} < {limits.min_notional(equity):.0f}")
     gross = sum(w.values())
     if gross > limits.max_gross + 1e-5:
         v.append(f"gross {gross:.4f} > {limits.max_gross}")
@@ -122,8 +123,9 @@ def order_sanity(ticker: str, side: str, qty: float, price: float, equity: float
     if notional > limits.max_order_pct_equity * equity + 1e-6:
         return OrderCheck(False, f"{ticker}: order notional {notional:,.0f} > "
                                  f"{limits.max_order_pct_equity:.0%} of equity")
-    if notional < limits.min_notional - 1e-6 and side == "BUY":
-        return OrderCheck(False, f"{ticker}: order notional {notional:,.0f} < min {limits.min_notional:,.0f}")
+    floor = limits.min_notional(equity)
+    if notional < floor - 1e-6 and side == "BUY":
+        return OrderCheck(False, f"{ticker}: order notional {notional:,.0f} < min {floor:,.0f}")
     if ref_close and ref_close > 0 and abs(price / ref_close - 1.0) > limits.price_sanity_pct:
         return OrderCheck(False, f"{ticker}: price {price:.2f} deviates >{limits.price_sanity_pct:.0%} "
                                  f"from last close {ref_close:.2f}")

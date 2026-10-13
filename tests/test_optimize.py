@@ -8,7 +8,8 @@ import pandas as pd
 import pytest
 from skfolio.optimization import MeanRisk
 
-from forge.risk import check_limits
+from forge.risk import check_limits, order_sanity
+from forge.config import LIMITS, Limits
 from optimize.portfolio import IC_CLAUDE, IC_KRONOS, alpha_vector, optimize_weights
 from tests.synth_small import make_returns
 
@@ -140,19 +141,30 @@ def test_alpha_vector_claude_only_is_relative_conviction():
 def test_min_notional_drops_tiny_positions_for_small_equity():
     cw = {"T00": 0.22, "T01": 0.22, "T02": 0.22, "T03": 0.22, "T04": 0.06}
     big = optimize_weights(cw, RET, equity=None)
-    assert big.weights["T02"] < 0.25                          # the solver sized these below the notional floor
+    assert big.weights["T02"] < 0.25                          # the solver sized these below the single-name cap
 
-    # equity=2000: min_notional=500 means only names at >= 25% survive; with this book none do
+    # The dust floor scales with the book (0.5% of equity): $10 at a $2000 book, $20 at $4000.
+    # (The old fixed $500 floor made a $200 book structurally untradeable; this is what that fixed.)
+    floor_small = LIMITS.min_notional(2000.0)
     small = optimize_weights(cw, RET, equity=2000.0)
-    assert small.weights == {t: w for t, w in big.weights.items() if w * 2000.0 >= 500.0}
+    assert small.weights == {t: w for t, w in big.weights.items() if w * 2000.0 >= floor_small}
     assert check_limits(small.weights, equity=2000.0) == []
+    assert all(w * 2000.0 >= floor_small - 1e-6 for w in small.weights.values())
 
-    # equity=4000: names below 12.5% are dropped, larger ones are kept untouched
+    floor_mid = LIMITS.min_notional(4000.0)
     mid = optimize_weights(cw, RET, equity=4000.0)
-    assert mid.weights == {t: w for t, w in big.weights.items() if w * 4000.0 >= 500.0}
-    assert "T00" in mid.weights and "T02" not in mid.weights
+    assert mid.weights == {t: w for t, w in big.weights.items() if w * 4000.0 >= floor_mid}
     assert check_limits(mid.weights, equity=4000.0) == []
-    assert all(w * 4000.0 >= 500.0 - 1e-6 for w in mid.weights.values())
+    assert all(w * 4000.0 >= floor_mid - 1e-6 for w in mid.weights.values())
+
+
+def test_tiny_book_is_tradeable_not_floor_blocked():
+    """Regression: the old fixed $500 floor was larger than a $200 book, so the fund could never
+    buy a share. At $200 the floor is $1 (0.5%), so a 25% name ($50) is buyable."""
+    lim = Limits()
+    assert lim.min_notional(200.0) == pytest.approx(1.0)
+    # the old $500 floor would have rejected a $50 buy on a $200 book; the scaled floor accepts it
+    assert order_sanity("T", "BUY", 1, 50.0, 200.0, 50.0, lim).ok
 
 
 def test_trimming_to_max_positions_keeps_claude_total_exposure():
