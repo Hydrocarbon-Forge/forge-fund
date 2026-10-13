@@ -17,9 +17,10 @@ import pandas as pd
 import yfinance as yf
 
 from forge.config import get_paths
-from forge.universe import BENCHMARK, SP100
+from forge.universe import BENCHMARK, CRYPTO, SP100, UNIVERSE
 
 log = logging.getLogger("forge.data")
+
 
 COLUMNS = ["date", "ticker", "open", "high", "low", "close", "volume"]
 PRICE_COLS = ["open", "high", "low", "close"]
@@ -107,11 +108,12 @@ def update_store(tickers: Sequence[str] | None = None, start: str = DEFAULT_STAR
                  store_dir: Path | str | None = None) -> dict:
     """Re-download history and atomically replace the parquet store and ``meta.json``.
 
-    ``tickers`` defaults to ``SP100 + [BENCHMARK]``; if given, it is used as-is (include SPY yourself).
+    ``tickers`` defaults to ``UNIVERSE + [BENCHMARK]``; if given, it is used as-is (include SPY yourself).
     If nothing usable is downloaded, raises ``RuntimeError`` and leaves the existing store untouched.
     Returns the meta dict that was written.
     """
-    symbols = list(dict.fromkeys([*SP100, BENCHMARK] if tickers is None else tickers))
+    symbols = list(dict.fromkeys([*UNIVERSE, BENCHMARK] if tickers is None else tickers))
+
     target = Path(store_dir) if store_dir is not None else get_paths().data
     target.mkdir(parents=True, exist_ok=True)
     try:

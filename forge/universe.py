@@ -1,8 +1,8 @@
-"""Investable universe: S&P 100 approximation as yfinance symbols, plus the benchmark.
+"""Investable universe: S&P 100 approximation as yfinance symbols, plus crypto and benchmark.
 
 GOOG is intentionally omitted (GOOGL is kept) to avoid double exposure to Alphabet.
 """
-from forge.config import BENCHMARK
+from forge.config import BENCHMARK, CRYPTO_SYMBOLS
 
 _SP100_TEXT = """
 AAPL ABBV ABT ACN ADBE AIG AMD AMGN AMT AMZN AVGO AXP BA BAC BNY BKNG BLK BMY BRK-B C CAT CHTR CL CMCSA COF COP
@@ -12,5 +12,8 @@ SBUX SCHW SO SPG T TGT TMO TMUS TSLA TXN UBER UNH UNP UPS USB V VZ WFC WMT XOM
 """
 
 SP100: list[str] = _SP100_TEXT.split()
+CRYPTO: list[str] = list(CRYPTO_SYMBOLS)
+UNIVERSE: list[str] = [*SP100, *CRYPTO]
 
-__all__ = ["SP100", "BENCHMARK"]
+__all__ = ["SP100", "CRYPTO", "UNIVERSE", "BENCHMARK"]
+

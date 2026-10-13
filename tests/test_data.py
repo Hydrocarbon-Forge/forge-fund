@@ -11,7 +11,7 @@ import yfinance as yf
 
 from forge import data
 from forge.config import get_paths
-from forge.universe import BENCHMARK, SP100
+from forge.universe import BENCHMARK, CRYPTO, SP100, UNIVERSE
 
 DAYS = pd.bdate_range("2026-08-03", periods=30).as_unit("s")  # tz-naive, like yfinance
 REQUESTED = ["AAA", "BBB", "CCC", "DDD", "EEE"]
@@ -153,8 +153,18 @@ def test_update_store_writes_parquet_and_meta(fake_yahoo: FakeYahoo) -> None:
 def test_update_store_defaults_to_universe_plus_benchmark(fake_yahoo: FakeYahoo) -> None:
     fake_yahoo.frames["SPY"] = _bars(400.0)
     meta = data.update_store()
-    assert set(fake_yahoo.calls[0]["tickers"]) == {*SP100, BENCHMARK}
+    assert set(fake_yahoo.calls[0]["tickers"]) == {*UNIVERSE, BENCHMARK}
     assert BENCHMARK not in meta["dropped"]
+
+
+def test_crypto_in_store_and_panel(fake_yahoo: FakeYahoo) -> None:
+    fake_yahoo.frames["BTC-USD"] = _bars(50000.0)
+    meta = data.update_store(tickers=["AAA", "BTC-USD", BENCHMARK])
+    assert "BTC-USD" not in meta["dropped"]
+    panel = data.load_panel("close", tickers=["AAA", "BTC-USD"])
+    assert "BTC-USD" in panel.columns
+    assert panel["BTC-USD"].iloc[-1] == pytest.approx(50000.0 + 0.5 * (len(DAYS) - 1))
+
 
 
 @pytest.mark.parametrize("failure", ["empty", "raises"])
