@@ -32,14 +32,14 @@ from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.config import BacktestEngineConfig, LoggingConfig, StrategyConfig
 from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.data import QuoteTick
-from nautilus_trader.model.enums import AccountType, OmsType, OrderSide
+from nautilus_trader.model.enums import AccountType, AssetClass, OmsType, OrderSide
 from nautilus_trader.model.identifiers import InstrumentId, Symbol, Venue
-from nautilus_trader.model.instruments import Equity
+from nautilus_trader.model.instruments import Commodity, Equity, Instrument
 from nautilus_trader.model.objects import Money, Price, Quantity
 from nautilus_trader.trading.strategy import Strategy
 
 from forge.config import LIMITS, Limits
-from forge.risk import check_limits, clamp_weights, order_sanity
+from forge.risk import check_limits, clamp_weights, is_crypto, order_sanity
 from forge.types import Plan, PortfolioView
 
 log = logging.getLogger("forge.engine")
@@ -73,6 +73,19 @@ def make_equity(ticker: str) -> Equity:
                   ts_event=0, ts_init=0, maker_fee=FEE_RATE, taker_fee=FEE_RATE)
 
 
+def make_crypto(ticker: str) -> Commodity:
+    iid = InstrumentId(Symbol(ticker), VENUE)
+    return Commodity(instrument_id=iid, raw_symbol=Symbol(ticker), asset_class=AssetClass.CRYPTOCURRENCY,
+                     quote_currency=USD, price_precision=2, size_precision=6,
+                     price_increment=Price.from_str("0.01"), size_increment=Quantity.from_str("0.000001"),
+                     lot_size=Quantity.from_str("0.000001"), ts_event=0, ts_init=0,
+                     maker_fee=FEE_RATE, taker_fee=FEE_RATE)
+
+
+def make_instrument(ticker: str) -> Instrument:
+    return make_crypto(ticker) if is_crypto(ticker) else make_equity(ticker)
+
+
 def _ts_ns(dates: pd.DatetimeIndex, hour: int, minute: int, second: int = 0) -> np.ndarray:
     off = pd.Timedelta(hours=hour, minutes=minute, seconds=second)
     # pandas>=3 keeps the index's native unit (s/us), so force nanoseconds before taking int64 values
@@ -83,19 +96,21 @@ def _date_of(ts_ns: int) -> str:
     return pd.Timestamp(ts_ns, unit="ns", tz="UTC").tz_convert(ET).strftime("%Y-%m-%d")
 
 
-def _quote(iid: InstrumentId, px: float, ts: int) -> QuoteTick:
+def _quote(iid: InstrumentId, px: float, ts: int, size_precision: int = 0) -> QuoteTick:
     h = HALF_SPREAD_BPS / 1e4
+    sz = Quantity(1_000_000, size_precision)
     return QuoteTick(iid, Price(px * (1 - h), 2), Price(px * (1 + h), 2),
-                     Quantity.from_int(1_000_000), Quantity.from_int(1_000_000), ts, ts)
+                     sz, sz, ts, ts)
 
 
 # ------------------------------------------------------------------------------ strategy
 class ForgeStrategy(Strategy):
     """Executes whatever Plan the decider returns - long-only, whole shares, with sanity checks."""
 
-    def __init__(self, instruments: dict[str, Equity], event_dates: list[str], mark_dates: list[str],
+    def __init__(self, instruments: dict[str, Instrument], event_dates: list[str], mark_dates: list[str],
                  decide: Callable[[str, PortfolioView], Plan], starting_capital: float,
                  limits: Limits = LIMITS):
+
         super().__init__(StrategyConfig(strategy_id="ForgeFund-001"))
         self.insts = instruments
         self.by_iid = {i.id: t for t, i in instruments.items()}
@@ -194,14 +209,25 @@ class ForgeStrategy(Strategy):
         free = self.portfolio.account(VENUE).balance_free(USD).as_double() * CASH_BUFFER
         buys = self._deltas(plan.meta["executed_targets"], view, side=OrderSide.BUY, equity=eq0)
         for t, qty, px in sorted(buys, key=lambda x: -x[1] * x[2]):
-            qty = min(qty, math.floor(free / px)) if px > 0 else 0
+            prec = self.insts[t].size_precision
+            if px > 0:
+                if prec == 0:
+                    max_qty = math.floor(free / px)
+                else:
+                    factor = 10 ** prec
+                    max_qty = math.floor(free / px * factor) / factor
+            else:
+                max_qty = 0
+            qty = min(qty, max_qty)
+            if prec > 0:
+                qty = round(qty, prec)
             if qty <= 0:
                 continue
             if self._submit(t, OrderSide.BUY, qty, px, eq0, date):
                 free -= qty * px
 
     def _deltas(self, targets: dict[str, float], view: PortfolioView, side: OrderSide,
-                equity: float | None = None) -> list[tuple[str, int, float]]:
+                equity: float | None = None) -> list[tuple[str, float, float]]:
         eq = equity if equity is not None else view.equity
         out = []
         for t in sorted(set(targets) | set(view.positions)):
@@ -211,11 +237,24 @@ class ForgeStrategy(Strategy):
             if q is None:
                 continue
             ask, bid = q.ask_price.as_double(), q.bid_price.as_double()
-            cur = int(round(view.positions.get(t, {}).get("qty", 0.0)))
+            prec = self.insts[t].size_precision
+            cur_raw = view.positions.get(t, {}).get("qty", 0.0)
+            cur = int(round(cur_raw)) if prec == 0 else round(cur_raw, prec)
             tgt_w = targets.get(t, 0.0)
-            tgt = int(math.floor(tgt_w * eq / ask)) if tgt_w > 0 else 0
+            if tgt_w > 0 and ask > 0:
+                if prec == 0:
+                    tgt = int(math.floor(tgt_w * eq / ask))
+                else:
+                    factor = 10 ** prec
+                    tgt = math.floor(tgt_w * eq / ask * factor) / factor
+            else:
+                tgt = 0 if prec == 0 else 0.0
             delta = tgt - cur
+            if prec > 0:
+                delta = round(delta, prec)
             if delta == 0:
+                continue
+            if prec > 0 and abs(delta) < 1e-9:
                 continue
             # rebalance band: skip small drifts on names we keep (full exits / new entries always trade)
             if cur > 0 and tgt > 0 and abs(delta) * ask / eq < self.limits.rebalance_band:
@@ -228,13 +267,15 @@ class ForgeStrategy(Strategy):
                 out.append((t, delta, ask))
         return out
 
-    def _submit(self, t: str, side: OrderSide, qty: int, px: float, equity: float, date: str) -> bool:
+    def _submit(self, t: str, side: OrderSide, qty: float, px: float, equity: float, date: str) -> bool:
         chk = order_sanity(t, side.name, qty, px, equity, self._last_close.get(t), self.limits)
         if not chk.ok and not (side == OrderSide.SELL and "min" in chk.reason):
             self.rejected.append({"date": date, "ticker": t, "side": side.name, "qty": qty, "reason": chk.reason})
             log.warning("order rejected: %s", chk.reason)
             return False
-        order = self.order_factory.market(self.insts[t].id, side, Quantity.from_int(int(qty)))
+        prec = self.insts[t].size_precision
+        q_obj = Quantity.from_int(int(qty)) if prec == 0 else Quantity(qty, prec)
+        order = self.order_factory.market(self.insts[t].id, side, q_obj)
         self.submit_order(order)
         return True
 
@@ -260,7 +301,9 @@ class ForgeStrategy(Strategy):
         else:
             avg = self._avg_cost.get(t, px)
             realized = (px - avg) * qty - fee
-            self._qty[t] = self._qty.get(t, 0.0) - qty
+            prec = self.insts[t].size_precision
+            rem = self._qty.get(t, 0.0) - qty
+            self._qty[t] = round(rem, prec) if prec > 0 else rem
             self._pos_pnl[t] = self._pos_pnl.get(t, 0.0) + realized
             if self._qty[t] <= 1e-9:                       # round trip closed
                 basis = self._cost_basis_total.get(t, 0.0)
@@ -310,7 +353,7 @@ class SimRunner:
 
     def run(self) -> SimResult:
         tickers = list(self.tickers) if self.tickers else [c for c in self.close_px.columns if self.close_px[c].notna().any()]
-        instruments = {t: make_equity(t) for t in tickers}
+        instruments = {t: make_instrument(t) for t in tickers}
         idx = self.close_px.index
         mark_dates = [d.strftime("%Y-%m-%d") for d in idx if d.strftime("%Y-%m-%d") != self.live_date]
         # every event date needs a 09:35 quote even if not in the price index (live day)
@@ -329,13 +372,14 @@ class SimRunner:
             crow = c_map.get(day)
             for j, t in enumerate(tickers):
                 iid = instruments[t].id
+                prec = instruments[t].size_precision
                 px_o = ov.get(t, orow[j] if orow is not None else np.nan)
                 if px_o is not None and np.isfinite(px_o) and px_o > 0:
-                    quotes.append(_quote(iid, float(px_o), int(open_ts[day])))
+                    quotes.append(_quote(iid, float(px_o), int(open_ts[day]), prec))
                 if crow is not None and day != self.live_date:
                     px_c = crow[j]
                     if np.isfinite(px_c) and px_c > 0:
-                        quotes.append(_quote(iid, float(px_c), int(close_ts[day])))
+                        quotes.append(_quote(iid, float(px_c), int(close_ts[day]), prec))
         # sentinel tick 10 min after the last quote so the final timers (09:35:02 buys / 16:00:01 mark) fire
         if quotes:
             last = max(quotes, key=lambda q: q.ts_event)

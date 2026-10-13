@@ -128,7 +128,8 @@ def main(argv: list[str] | None = None) -> int:
                  dd, summary["status"], summary["equity"], summary["cash"], summary["n_positions"],
                  summary["n_fills_today"], summary["halted"])
         for t, p in sorted(res.final_positions.items(), key=lambda kv: -kv[1]["value"]):
-            log.info("  %-6s qty=%5d  avg=%9.2f  last=%9.2f  w=%5.1f%%", t, p["qty"], p["avg_px"], p["last_px"], 100 * p["weight"])
+            qty_str = f"{int(p['qty']):d}" if float(p["qty"]).is_integer() else f"{p['qty']:.6f}"
+            log.info("  %-6s qty=%s  avg=%9.2f  last=%9.2f  w=%5.1f%%", t, qty_str.rjust(8), p["avg_px"], p["last_px"], 100 * p["weight"])
         log.info("Claude usage this run: %s", pipe.stats)
         if args.dry_run:
             log.info("dry-run: nothing written")

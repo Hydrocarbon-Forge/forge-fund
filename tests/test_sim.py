@@ -113,3 +113,44 @@ def test_closed_round_trips_have_pnl():
     res, *_ = run(lambda d, v: next(plans))
     assert len(res.closed) == 1 and res.closed.iloc[0].ticker == "AAA"
     assert res.closed.iloc[0].pnl == pytest.approx(res.fills.realized_pnl.sum(), abs=0.01)
+
+
+def test_fractional_crypto_at_tiny_capital():
+    # Demonstrates that a $200 book can hold and trade fractional BTC-USD cleanly
+    close = pd.DataFrame({
+        "AAPL": [150.0 + i * 0.5 for i in range(len(DATES))],
+        "BTC-USD": [60000.0 + i * 100.0 for i in range(len(DATES))],
+    }, index=DATES)
+    open_ = close.shift(1).fillna(close.iloc[0]) * 1.001
+    ev = [DATES[1].strftime("%Y-%m-%d"), DATES[5].strftime("%Y-%m-%d")]
+
+    plans = iter([
+        Plan({"BTC-USD": 0.20}),  # $40 target notional -> ~0.000666 BTC
+        Plan({}),                 # full exit -> close position
+    ])
+
+    runner = SimRunner(open_, close, 200.0, lambda d, v: next(plans), ev, tickers=["AAPL", "BTC-USD"])
+    res = runner.run()
+
+    assert res.errors == []
+    assert res.rejected == []
+    # Verify buys on day 1
+    buys = res.fills[res.fills.side == "BUY"]
+    assert len(buys) == 1
+    buy_fill = buys.iloc[0]
+    assert buy_fill.ticker == "BTC-USD"
+    assert 0 < buy_fill.qty < 0.001  # fractional quantity
+    assert buy_fill.notional == pytest.approx(buy_fill.qty * buy_fill.price, abs=0.01)
+    assert 35.0 <= buy_fill.notional <= 41.0  # ~20% of $200
+
+    # Verify sells on day 5
+    sells = res.fills[res.fills.side == "SELL"]
+    assert len(sells) == 1
+    sell_fill = sells.iloc[0]
+    assert sell_fill.ticker == "BTC-USD"
+    assert sell_fill.qty == buy_fill.qty
+    assert len(res.final_positions) == 0  # position closed
+    assert len(res.closed) == 1
+    assert res.closed.iloc[0].ticker == "BTC-USD"
+    assert res.final_cash > 190.0
+

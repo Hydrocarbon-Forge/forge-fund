@@ -124,7 +124,8 @@ def write_state(paths: Paths, res: SimResult, plan: Plan, entry: dict, inception
     equity = res.final_equity
     positions = []
     for t, p in sorted(res.final_positions.items(), key=lambda kv: -kv[1]["value"]):
-        positions.append({"ticker": t, "qty": int(p["qty"]), "avg_px": round(p["avg_px"], 4), "last_px": round(p["last_px"], 4),
+        q = int(p["qty"]) if float(p["qty"]).is_integer() else round(float(p["qty"]), 6)
+        positions.append({"ticker": t, "qty": q, "avg_px": round(p["avg_px"], 4), "last_px": round(p["last_px"], 4),
                           "market_value": round(p["value"], 2), "unrealized_pnl": round((p["last_px"] - p["avg_px"]) * p["qty"], 2),
                           "unrealized_pct": round(p["last_px"] / p["avg_px"] - 1, 6) if p["avg_px"] else 0.0,
                           "weight": round(p["value"] / equity, 6) if equity else 0.0})
@@ -159,7 +160,8 @@ def write_state(paths: Paths, res: SimResult, plan: Plan, entry: dict, inception
 
     trades = []
     for f in res.fills.itertuples():
-        trades.append({"ts": f.ts, "date": f.date, "ticker": f.ticker, "side": f.side, "qty": int(f.qty),
+        fq = int(f.qty) if float(f.qty).is_integer() else round(float(f.qty), 6)
+        trades.append({"ts": f.ts, "date": f.date, "ticker": f.ticker, "side": f.side, "qty": fq,
                        "price": round(f.price, 4), "notional": round(f.notional, 2), "fee": round(f.fee, 4),
                        "realized_pnl": round(f.realized_pnl, 2), "reason": "rebalance"})
     _atomic_write(st / "trades.jsonl", "".join(json.dumps(t) + "\n" for t in trades))
