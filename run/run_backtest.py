@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 
 from brain.claude_client import ClaudeClient
-from brain.decision import ClaudeBrain
+from brain.decision import PROMPT_VERSION, ClaudeBrain
 from engine.metrics import bootstrap_excess_ci, curve_stats, rank_ic, regress, trade_stats
 from engine.sim import CASH_BUFFER, FEE_RATE, HALF_SPREAD_BPS, SimRunner
 from forge.config import BENCHMARK, KRONOS, LIMITS, STARTING_CAPITAL, claude_settings, get_paths
@@ -201,7 +201,8 @@ def main(argv: list[str] | None = None) -> int:
                      "limit_hits": sc.get("limit_hits", 0)},
         "halts": pipe.halts, "rejected_orders": len(res.rejected), "decider_errors": len(res.errors),
         "assumptions": {"half_spread_bps": HALF_SPREAD_BPS, "fee_bps_per_side": float(FEE_RATE) * 1e4,
-                        "risk_free_rate": 0.0, "limits": LIMITS.__dict__, "anonymized_prompts": cfg.anonymize,
+                        "risk_free_rate": 0.0, "limits": LIMITS.__dict__, "anonymized_prompts": cfg.anonymize, "prompt_version": PROMPT_VERSION,
+                        "claude_model": args.model or "sonnet(weekly)/haiku(routine)",
                         "universe_size": len(mkt.universe), "kronos_model": KRONOS.model_name},
     }
     metrics["valid_run"] = (not args.no_claude) and metrics["validity"]["fallback_share"] <= 0.10 or args.no_claude

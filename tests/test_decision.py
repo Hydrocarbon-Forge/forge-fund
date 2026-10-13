@@ -231,3 +231,15 @@ def test_single_ticker_feature_table_builds_a_prompt(kronos_df, view):
     feats = compute_features(close, make_volume(close, seed=5), close.index[-1])
     msgs = build_messages(LABEL, feats, None, view, Masker(["AAPL"], enabled=True), MARKET, None, None)
     assert "S001" in msgs[1]["content"]
+
+
+def test_prompt_never_feeds_back_model_authored_notes_but_shows_computed_regime(features, kronos_df, view):
+    """v3: the previous review's notes (model-written, rule-hardening) must NOT reach the next prompt."""
+    from brain.features import universe_regime
+    msgs = build_messages(LABEL, features, kronos_df, view, Masker(list(features.index), True), MARKET,
+                          prev_notes="SECRET-RULE: stay in cash until breadth > 50", prev_risk="high",
+                          regime=universe_regime(features))
+    text = msgs[1]["content"]
+    assert "SECRET-RULE" not in text and "PREVIOUS REVIEW" not in text
+    assert "UNIVERSE REGIME (computed by code" in text and "above 50d avg" in text
+    assert "MANDATE" in msgs[0]["content"] and "long-only equity fund" in msgs[0]["content"]

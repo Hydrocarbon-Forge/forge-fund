@@ -130,7 +130,7 @@ def test_index_context_keys_and_drawdown(panel):
     close, _ = panel
     asof = close.index[-1]
     ctx = index_context(close["AAA"], asof)
-    assert set(ctx) == {"r1", "r5", "r20", "r60", "vol20", "p52", "dd_from_high"}
+    assert set(ctx) == {"r1", "r5", "r20", "r60", "vol20", "p52", "dd_from_high", "d50", "d200"}
     assert ctx["dd_from_high"] <= 0
     s = close["AAA"]
     assert ctx["dd_from_high"] == pytest.approx(s.iloc[-1] / s.iloc[-252:].max() - 1, rel=1e-12)
@@ -150,3 +150,16 @@ def test_index_context_too_short_returns_empty():
     idx = pd.bdate_range("2024-01-02", periods=30)
     s = pd.Series(np.linspace(100, 110, 30), index=idx)
     assert index_context(s, idx[-1]) == {}
+
+
+def test_universe_regime_is_computed_in_code(panel):
+    from brain.features import universe_regime
+    close, volume = panel
+    f = compute_features(close, volume, close.index[-1])
+    rg = universe_regime(f)
+    assert rg["n"] == len(f)
+    assert rg["above50"] == pytest.approx((f["d50"] > 0).mean())
+    assert rg["above200"] == pytest.approx((f["d200"] > 0).mean())
+    assert rg["med_r20"] == pytest.approx(f["r20"].median())
+    assert all(0.0 <= rg[k] <= 1.0 for k in ("above50", "above200", "up20", "up60", "near_high"))
+    assert universe_regime(f.iloc[0:0]) == {}

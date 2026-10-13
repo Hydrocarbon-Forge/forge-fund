@@ -41,7 +41,7 @@ yfinance daily bars ─► data/ohlcv_daily.parquet
         ▼
  Nautilus simulated venue (CASH account): sells at 09:35:01 ET, buys at 09:35:02, mark at 16:00 ET
         ▼
- state/*.json(l) ─► FastAPI dashboard on 127.0.0.1:8905
+ state/*.json(l) ─► FastAPI dashboard on 192.168.1.201:8905
 ```
 
 ### Components
@@ -74,7 +74,7 @@ scripts/setup.sh                 # venv, deps (CPU torch), pinned Kronos source,
 .venv/bin/python -m pytest -q                                   # unit + smoke + e2e tests
 .venv/bin/python -m run.run_backtest --start 2023-01-03 --freq weekly   # full pipeline backtest, prints real metrics
 .venv/bin/python -m run.run_daily                                # one paper cycle (data→Kronos→Claude→skfolio→Nautilus)
-.venv/bin/python -m api.server                                   # dashboard on http://127.0.0.1:8905
+.venv/bin/python -m api.server                                   # dashboard on http://192.168.1.201:8905
 ```
 
 Useful flags: `run_backtest --no-claude` (rule baseline), `--no-kronos`, `--freq daily|weekly|N`,
@@ -146,7 +146,7 @@ effectively a weekly loss cap.
 | `data/ohlcv_daily.parquet`, `data/forecasts_YYYYMMDD.parquet` | market data; cached Kronos forecasts |
 | `backtests/<run_id>/` | `metrics.json`, `report.txt`, `equity.csv`, `trades.csv`, `decisions.jsonl`, `calls.jsonl` |
 
-Dashboard (`http://127.0.0.1:8905`, loopback only, GET-only): equity curve vs SPY, positions, last Claude decision
+Dashboard (`http://192.168.1.201:8905`, LAN-visible, GET-only): equity curve vs SPY, positions, last Claude decision
 with rationales, Kronos signal panel, PnL table, trade log, backtest summary, Claude usage/cost.
 
 ## Going live later (documented, **not built**)
@@ -178,8 +178,9 @@ Do **not** attempt this without a human decision, a funded broker account and an
   prompt hash for resumability, not for reproducibility of a fresh run).
 * Kronos-mini is a very small model; its measured IC is reported, not assumed.
 * The 80% gross cap structurally lags a fully-invested benchmark in rising markets.
-* **Port deviation from the spec**: SPEC.md asks for `127.0.0.1:8904`, but that port is held by another local service
-  (Forge Office), so the dashboard uses **8905** (`forge/config.py: DASHBOARD_PORT`). Change that one constant if 8904 is freed.
+* **Bind deviation from the spec**: SPEC.md asks for `127.0.0.1:8904`, but that port is held by another local service
+  (Forge Office), and Gavin wants to view it from his device — so the dashboard uses **192.168.1.201:8905**
+  (`forge/config.py: DASHBOARD_HOST/DASHBOARD_PORT`). Paper data only; GET-only endpoints.
 
 ## Layout & conventions
 Python 3.14 only. `FORGE_ROOT` redirects `data/ state/ logs/ backtests/` (tests use a tmp dir).

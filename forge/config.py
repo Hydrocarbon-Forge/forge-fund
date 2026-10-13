@@ -16,9 +16,9 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# Dashboard is localhost-only. 8904 is taken by Nathan's forge-office,
-# 8901-8903 by forge-console, 8910 by the Claude server -> use 8905.
-DASHBOARD_HOST = "127.0.0.1"
+# Dashboard binds the box's LAN IP so Gavin can open http://192.168.1.201:8905
+# from his phone/laptop. Paper-trading data only — no secrets, GET-only endpoints.
+DASHBOARD_HOST = "192.168.1.201"
 DASHBOARD_PORT = 8905
 
 BENCHMARK = "SPY"

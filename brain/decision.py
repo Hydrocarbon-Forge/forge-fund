@@ -25,6 +25,9 @@ from forge.types import PortfolioView
 
 log = logging.getLogger("forge.brain")
 
+PROMPT_VERSION = "v3-computed-regime"   # v1-original: no mandate, notes fed back -> haiku locked into 100% cash;
+#                                         v2-mandate: + mandate, still notes fed back -> still mostly cash (self-made rulebook)
+
 SCHEMA_EXAMPLE = ('{"holdings": {"<ID>": {"weight": 0.12, "rationale": "<=25 words"}}, '
                   '"cash": 0.20, "notes": "<=120 words", "risk_view": "low|med|high"}')
 
@@ -37,16 +40,23 @@ def system_prompt(limits: Limits = LIMITS) -> str:
         f"- Long-only. At most {limits.max_positions} holdings. At most {limits.max_single:.0%} in any one name.\n"
         f"- Total invested at most {limits.max_gross:.0%} of equity (so cash >= {1 - limits.max_gross:.0%}). Weights are fractions of TOTAL equity.\n"
         "- Only use ids that appear in the UNIVERSE table. Never invent ids.\n"
+        "MANDATE: this is a long-only equity fund, not a market-timing vehicle. Its job is to hold a diversified set of "
+        "the best-looking large caps. The normal state is roughly 60-80% invested across 6-10 names. Hold more than 50% "
+        "cash ONLY when the INDEX line shows concrete stress RIGHT NOW (drawdown from its 52-week high worse than -10%, "
+        "or 20-day volatility above ~25%). Sitting mostly in cash for an extended period is a failure of the mandate, "
+        "not a conservative choice. Higher cash is a response to stress visible in today's data, never a standing preference.\n"
         "GUIDANCE:\n"
         "- Trading costs money: do not churn. Keep current holdings unless the evidence changed.\n"
         "- The kr_* columns are forecasts from a small statistical foundation model (Kronos). They are noisy and "
-        "often wrong; treat them as ONE weak input next to trend, momentum, volatility and the market context.\n"
-        "- Holding more cash is a valid decision when the market looks fragile. Be calibrated, not heroic.\n"
+        "often wrong; treat them as ONE weak input next to trend, momentum, volatility and the market context. "
+        "Do not wait for Kronos to be 'proven' before investing: if you distrust it, give it little weight and decide "
+        "on trend, momentum, volatility and the market context.\n"
         "- Do not assume any information beyond what is in the prompt.\n"
         "OUTPUT: reply with ONE JSON object and nothing else (no markdown, no prose) with exactly this shape:\n"
         f"{SCHEMA_EXAMPLE}\n"
         "holdings weights + cash must sum to 1.0 (within 0.02). rationale: <=25 words each. "
-        "notes: <=120 words - your regime view and what would change your mind (it is shown to you at the next review). "
+        "notes: <=120 words - your regime view, written for the human audit log only (you will NOT see it again; "
+        "every review is decided fresh from the data and the current holdings). "
         "risk_view: your overall market risk assessment."
     )
 
@@ -90,7 +100,7 @@ def _row(i: str, r: pd.Series, k: pd.Series | None) -> str:
 
 def build_messages(label: str, features: pd.DataFrame, kronos: pd.DataFrame | None, view: PortfolioView,
                    masker: Masker, market: dict[str, float], prev_notes: str | None, prev_risk: str | None,
-                   limits: Limits = LIMITS, horizon: int = 5) -> list[dict]:
+                   limits: Limits = LIMITS, horizon: int = 5, regime: dict | None = None) -> list[dict]:
     kidx = kronos.drop_duplicates("ticker").set_index("ticker") if kronos is not None and len(kronos) else None
     rows = []
     ex = ([masker.to_id(t) for t in list(features.index[:2])] + ["AAA", "BBB"])[:2]
@@ -117,13 +127,19 @@ def build_messages(label: str, features: pd.DataFrame, kronos: pd.DataFrame | No
                    f"r60 {_pct(mk.get('r60'))}% | vol20 {mk.get('vol20', float('nan')) * 100:.0f}% | "
                    f"52w-range position {mk.get('p52', float('nan')):.2f} | drawdown from 52w high "
                    f"{_pct(mk.get('dd_from_high'))}%") if mk else "INDEX: unavailable"
+    rg = regime or {}
+    regime_line = (f"UNIVERSE REGIME (computed by code from the table below - do not recount): {rg['n']} names | "
+                   f"above 50d avg {rg['above50'] * 100:.0f}% | above 200d avg {rg['above200'] * 100:.0f}% | "
+                   f"positive over 20d {rg['up20'] * 100:.0f}% / 60d {rg['up60'] * 100:.0f}% | median r20 {_pct(rg['med_r20'])}% "
+                   f"r60 {_pct(rg['med_r60'])}% | dispersion of r20 {rg['disp_r20'] * 100:.1f}pp | median vol20 {rg['med_vol20'] * 100:.0f}% | "
+                   f"within 10% of 52w high {rg['near_high'] * 100:.0f}%") if rg else "UNIVERSE REGIME: unavailable"
     user = (
         f"AS OF: {label} (decision for the next open; you only see data through the prior close)\n"
         f"FUND: equity ${view.equity:,.0f} | cash {cash_pct * 100:.0f}% | since inception {_pct(since, 2)}% | "
-        f"last period {_pct(period, 2)}% | drawdown from peak {_pct(dd, 2)}% | previous risk_view: {prev_risk or 'none'}\n"
+        f"last period {_pct(period, 2)}% | drawdown from peak {_pct(dd, 2)}%\n"
         f"CURRENT HOLDINGS: {hold}\n"
-        f"YOUR NOTES FROM THE PREVIOUS REVIEW: {prev_notes or 'none (first review)'}\n"
         f"MARKET CONTEXT: {market_line}\n"
+        f"{regime_line}\n"
         f"UNIVERSE ({len(rows)} names). Columns, pipe-separated: id|r1|r5|r20|r60 (% price change over 1/5/20/60 trading days)|"
         f"vol (annualised 20d volatility %)|rsi (14d)|d50|d200 (% vs 50/200-day average)|p52 (position in 52-week range 0-1)|"
         f"volx (20d vs 60d avg volume)|kr_ret (Kronos mean forecast % return over next {horizon} trading days)|"
@@ -133,7 +149,7 @@ def build_messages(label: str, features: pd.DataFrame, kronos: pd.DataFrame | No
         f"\n\nChoose target weights for the next rebalance.\n"
         f"Reply with ONLY a JSON object using EXACTLY these keys (no markdown fences, no other keys, no prose). Example shape:\n"
         f'{{"holdings": {{"{ex[0]}": {{"weight": 0.15, "rationale": "short reason"}}, "{ex[1]}": {{"weight": 0.10, "rationale": "short reason"}}}}, '
-        f'"cash": 0.75, "notes": "regime view and what would change your mind", "risk_view": "med"}}\n'
+        f'"cash": 0.75, "notes": "regime view for the log", "risk_view": "med"}}\n'
         f"Rules: \"holdings\" maps id -> {{weight, rationale}}; weights are fractions of total equity; holdings weights + cash = 1.0; "
         f"risk_view is exactly one of: low, med, high."
     )

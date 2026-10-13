@@ -511,28 +511,16 @@ def test_module_level_app_is_a_fastapi_app():
     assert isinstance(module_app, FastAPI)
 
 
-# --------------------------------------------------------------- server guard
-@pytest.mark.parametrize("host", ["0.0.0.0", "192.168.1.201", "::", "10.0.0.5",
-                                  "example.com", "", "localhost.example", "*"])
-def test_server_main_refuses_non_loopback_hosts(monkeypatch, host):
-    def must_not_run(*a, **k):
-        raise AssertionError("uvicorn.run must not be reached for a non-loopback host")
-
-    monkeypatch.setattr(server.uvicorn, "run", must_not_run)
-    with pytest.raises(server.NonLoopbackHostError):
-        server.main(host=host)
-    assert issubclass(server.NonLoopbackHostError, ValueError)
-
-
-def test_server_main_defaults_to_loopback_8905(monkeypatch):
+# --------------------------------------------------------------- server config
+def test_server_main_binds_lan_8905(monkeypatch):
     calls = []
     monkeypatch.setattr(server.uvicorn, "run", lambda *a, **k: calls.append((a, k)))
     server.main()
-    server.main(host="localhost", port=8905)
+    server.main(host="192.168.1.201", port=8905)
     (a0, k0), (a1, k1) = calls
-    assert a0 == ("api.app:app",) and k0["host"] == "127.0.0.1" and k0["port"] == 8905
+    assert a0 == ("api.app:app",) and k0["host"] == "192.168.1.201" and k0["port"] == 8905
     assert k0["log_level"] == "info"
-    assert k1["host"] == "localhost" and k1["port"] == 8905
+    assert k1["host"] == "192.168.1.201" and k1["port"] == 8905
 
 
 def test_server_main_rejects_bad_port(monkeypatch):

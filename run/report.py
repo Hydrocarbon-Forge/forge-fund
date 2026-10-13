@@ -24,6 +24,8 @@ def render_report(m: dict) -> str:
     L = []
     L.append("=" * 92)
     L.append(f"forge-fund BACKTEST  |  {m['run_id']}")
+    pv = (m.get("assumptions") or {}).get("prompt_version", "v1-original")
+    L.append(f"brain prompt: {pv} | model: {(m.get('assumptions') or {}).get('claude_model', 'n/a')}")
     L.append(f"period {m['start']} -> {m['end']}  |  {m['n_rebalances']} rebalances ({m['freq']})  |  "
              f"mode: {m['mode']}  |  start capital ${m['capital']:,.0f}")
     L.append("PAPER SIMULATION - hypothetical results, not investment advice. See caveats below.")
@@ -57,6 +59,9 @@ def render_report(m: dict) -> str:
     L.append(f"Exposure: avg invested {_u(t.get('avg_exposure'), 0)} | avg positions {_n(t.get('avg_positions'), 1)} | "
              f"annual one-way turnover {_u(t.get('annual_turnover'), 0)} | fees ${t.get('total_fees', 0):,.0f} "
              f"({_u(t.get('fees_pct_of_start'), 2)} of capital)")
+    if t.get("avg_exposure") is not None and t["avg_exposure"] < 0.25:
+        L.append(f"NOTE: the fund was on average only {t['avg_exposure']:.0%} invested - these results mostly reflect holding CASH, "
+                 f"not stock selection (check the brain's decisions).")
     k = m.get("kronos_signal") or {}
     if k:
         L.append(f"Kronos signal quality ({k['n_dates']} dates): mean rank IC {k['mean_rank_ic']:+.3f} "

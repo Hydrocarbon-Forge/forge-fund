@@ -42,8 +42,8 @@ def test_mode_is_paper_and_venue_is_simulated_cash_account():
     assert "nautilus_trader.backtest" in sim
 
 
-def test_dashboard_is_loopback_only_on_8905():
-    assert cfg.DASHBOARD_HOST == "127.0.0.1" and cfg.DASHBOARD_PORT == 8905
+def test_dashboard_binds_lan_on_8905():
+    assert cfg.DASHBOARD_HOST == "192.168.1.201" and cfg.DASHBOARD_PORT == 8905
 
 
 def test_no_broker_keys_in_environment_template():

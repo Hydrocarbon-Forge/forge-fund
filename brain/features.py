@@ -62,4 +62,21 @@ def index_context(close: pd.Series, asof: pd.Timestamp) -> dict[str, float]:
         "vol20": float(ret.tail(20).std() * np.sqrt(252)),
         "p52": float((c.iloc[-1] - c.tail(252).min()) / max(c.tail(252).max() - c.tail(252).min(), 1e-12)),
         "dd_from_high": float(c.iloc[-1] / c.tail(252).max() - 1),
+        "d50": float(c.iloc[-1] / c.tail(50).mean() - 1),
+        "d200": float(c.iloc[-1] / c.tail(200).mean() - 1) if len(c) >= 200 else float("nan"),
+    }
+
+
+def universe_regime(features: pd.DataFrame) -> dict[str, float]:
+    """Breadth/dispersion statistics over the universe table - computed by code so the LLM never has to count."""
+    if features.empty:
+        return {}
+    f = features
+    return {
+        "n": int(len(f)),
+        "above50": float((f["d50"] > 0).mean()), "above200": float((f["d200"].dropna() > 0).mean()) if f["d200"].notna().any() else float("nan"),
+        "up20": float((f["r20"] > 0).mean()), "up60": float((f["r60"] > 0).mean()),
+        "med_r20": float(f["r20"].median()), "med_r60": float(f["r60"].median()),
+        "disp_r20": float(f["r20"].std(ddof=0)), "med_vol20": float(f["vol20"].median()),
+        "near_high": float((f["p52"] > 0.9).mean()),
     }

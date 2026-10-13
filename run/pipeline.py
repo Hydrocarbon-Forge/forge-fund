@@ -17,7 +17,7 @@ import pandas as pd
 
 from brain.claude_client import ClaudeClient
 from brain.decision import BrainResult, ClaudeBrain, Masker, build_messages
-from brain.features import compute_features, index_context
+from brain.features import compute_features, index_context, universe_regime
 from forge.config import BENCHMARK, KRONOS, LIMITS, Limits, claude_settings, get_paths, redact
 from forge.data import load_panel
 from forge.risk import clamp_weights, loss_cap_breached, max_investable
@@ -178,7 +178,8 @@ class DecisionPipeline:
         br: BrainResult | None = None
         if cfg.use_claude:
             model, deep = self._model_for(date)
-            msgs = build_messages(label, feats, kdf, view, self.masker, market, self.prev_notes, self.prev_risk, self.limits, KRONOS.pred_len)
+            msgs = build_messages(label, feats, kdf, view, self.masker, market, self.prev_notes, self.prev_risk, self.limits,
+                                  KRONOS.pred_len, regime=universe_regime(feats))
             if self.limit_blocked:
                 self.stats["fallback_holds"] += 1
                 meta.update(status="claude_limit", error="Claude usage limit not cleared; decision skipped")
