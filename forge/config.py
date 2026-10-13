@@ -163,12 +163,34 @@ PRICE_PER_MTOK = {
     "haiku": (1.0, 5.0),
     "sonnet": (3.0, 15.0),
     "opus": (5.0, 25.0),
+    "gemini-3.8-flash-high": (0.15, 0.60),
 }
 
 
 def estimate_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float:
     pin, pout = PRICE_PER_MTOK.get(model, PRICE_PER_MTOK["sonnet"])
     return round((prompt_tokens * pin + completion_tokens * pout) / 1_000_000, 6)
+
+
+# ------------------------------------------------------------- gemini fallback
+@dataclass(frozen=True)
+class GeminiSettings:
+    model: str = "gemini-3.8-flash-high"
+    bin_path: str = "agy"
+    enabled: bool = True
+    timeout_s: float = 120.0
+
+
+def gemini_settings() -> GeminiSettings:
+    load_env()
+    raw = os.environ.get("GEMINI_FALLBACK", "true").strip().lower()
+    enabled = raw in ("1", "true", "yes", "on")
+    return GeminiSettings(
+        model=os.environ.get("GEMINI_MODEL", "gemini-3.8-flash-high"),
+        bin_path=os.environ.get("GEMINI_BIN", "agy"),
+        enabled=enabled,
+        timeout_s=float(os.environ.get("GEMINI_TIMEOUT_S", "120.0")),
+    )
 
 
 # ----------------------------------------------------------- model / signal cfg
