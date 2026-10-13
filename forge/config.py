@@ -178,7 +178,7 @@ class GeminiSettings:
     model: str = "gemini-3.8-flash-high"
     bin_path: str = "agy"
     enabled: bool = True
-    timeout_s: float = 120.0
+    timeout_s: float = 300.0
 
 
 def gemini_settings() -> GeminiSettings:
@@ -189,7 +189,7 @@ def gemini_settings() -> GeminiSettings:
         model=os.environ.get("GEMINI_MODEL", "gemini-3.8-flash-high"),
         bin_path=os.environ.get("GEMINI_BIN", "agy"),
         enabled=enabled,
-        timeout_s=float(os.environ.get("GEMINI_TIMEOUT_S", "120.0")),
+        timeout_s=float(os.environ.get("GEMINI_TIMEOUT_S", "300.0")),
     )
 
 
