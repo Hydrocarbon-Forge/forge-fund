@@ -232,13 +232,19 @@ def save_cached(df: pd.DataFrame, asof: pd.Timestamp, settings: KronosSettings =
 
 
 def forecast_with_cache(forecaster: KronosForecaster, histories: dict[str, pd.DataFrame],
-                        asof: pd.Timestamp, data_dir: Path | None = None) -> pd.DataFrame:
-    cached = load_cached(asof, forecaster.s, data_dir)
-    if cached is not None:
-        want = set(histories)
-        have = set(cached["ticker"])
-        if have <= want and len(have) >= 0.9 * len([t for t in want if len(histories[t].loc[:asof]) >= forecaster.s.lookback]):
-            return cached.drop(columns=["cfg"])
+                        asof: pd.Timestamp, data_dir: Path | None = None, wait_s: float = 0.0) -> pd.DataFrame:
+    """Cached forecast for ``asof``. With ``wait_s`` > 0, first wait for a separate precompute process
+    (``run_backtest --phase kronos``) to publish the file, then fall back to computing it here."""
+    deadline = time.time() + wait_s
+    while True:
+        cached = load_cached(asof, forecaster.s, data_dir)
+        if cached is not None:
+            want = [t for t in histories if len(histories[t].loc[:asof]) >= forecaster.s.lookback]
+            if set(cached["ticker"]) <= set(histories) and len(cached) >= 0.9 * len(want):
+                return cached.drop(columns=["cfg"])
+        if time.time() >= deadline:
+            break
+        time.sleep(5)
     df = forecaster.forecast(histories, asof)
     save_cached(df, asof, forecaster.s, data_dir)
     return df

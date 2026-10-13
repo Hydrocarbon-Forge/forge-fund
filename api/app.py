@@ -458,16 +458,20 @@ def create_app(paths: Paths | None = None) -> FastAPI:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
     @app.middleware("http")
-    async def _headers(request, call_next):        response = await call_next(request)
+    async def _headers(request, call_next):
+        response = await call_next(request)
         response.headers.setdefault("Cache-Control", "no-store")
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         return response
 
-    def guarded(fallback: Callable[[], dict]):        """A bad file must never become a 500: log the class name and answer empty."""
+    def guarded(fallback: Callable[[], dict]):
+        """A bad file must never become a 500: log the class name and answer empty."""
 
-        def deco(fn):            @functools.wraps(fn)
-            def wrapper(*args, **kwargs):                try:
+        def deco(fn):
+            @functools.wraps(fn)
+            def wrapper(*args, **kwargs):
+                try:
                     return _sanitize(fn(*args, **kwargs))
                 except Exception as exc:  # noqa: BLE001 - deliberate degrade-to-empty
                     log.warning("dashboard %s degraded (%s)", fn.__name__, type(exc).__name__)
@@ -478,7 +482,8 @@ def create_app(paths: Paths | None = None) -> FastAPI:
         return deco
 
     @app.get("/", response_class=HTMLResponse)
-    def index():        try:
+    def index():
+        try:
             html = STATIC_INDEX.read_text(encoding="utf-8")
         except OSError:
             return HTMLResponse("<!doctype html><title>forge-fund</title>dashboard page missing",
@@ -488,7 +493,8 @@ def create_app(paths: Paths | None = None) -> FastAPI:
     @app.get("/api/health")
     @guarded(lambda: {"ok": True, "now": _now(), "mode": MODE, "last_run": None,
                       "halted": False, "halt_reason": None})
-    def health():        port = data.portfolio()
+    def health():
+        port = data.portfolio()
         halted, reason = data.halt_state(port)
         return {
             "ok": True,
@@ -501,7 +507,8 @@ def create_app(paths: Paths | None = None) -> FastAPI:
 
     @app.get("/api/summary")
     @guarded(_empty_summary)
-    def summary():        port = data.portfolio()
+    def summary():
+        port = data.portfolio()
         rows = data.curve() or []
         halted, reason = data.halt_state(port)
         port = port or {}
@@ -553,12 +560,14 @@ def create_app(paths: Paths | None = None) -> FastAPI:
 
     @app.get("/api/equity")
     @guarded(lambda: {"available": False, "rows": []})
-    def equity():        rows = data.curve() or []
+    def equity():
+        rows = data.curve() or []
         return {"available": bool(rows), "rows": rows[-EQUITY_ROWS_MAX:]}
 
     @app.get("/api/positions")
     @guarded(lambda: {"available": False, "positions": [], "cash": None, "equity": None})
-    def positions():        port = data.portfolio()
+    def positions():
+        port = data.portfolio()
         if port is None:
             return {"available": False, "positions": [], "cash": None, "equity": None}
         return {
@@ -570,21 +579,24 @@ def create_app(paths: Paths | None = None) -> FastAPI:
 
     @app.get("/api/decision")
     @guarded(_empty_decision)
-    def decision():        d = data.decision()
+    def decision():
+        d = data.decision()
         if d is None:
             return _empty_decision()
         return {**d, "available": True}
 
     @app.get("/api/forecasts")
     @guarded(_empty_forecasts)
-    def forecasts():        f = data.forecasts()
+    def forecasts():
+        f = data.forecasts()
         if f is None:
             return _empty_forecasts()
         return {**f, "available": bool(f["rows"])}
 
     @app.get("/api/pnl")
     @guarded(lambda: {"available": False, "rows": [], "total": None, "periods": []})
-    def pnl():        port = data.portfolio()
+    def pnl():
+        port = data.portfolio()
         rows = data.curve() or []
         trades = data.trades() or []
         held = {p["ticker"]: p for p in _positions(port)} if port else {}
@@ -637,13 +649,15 @@ def create_app(paths: Paths | None = None) -> FastAPI:
 
     @app.get("/api/trades")
     @guarded(lambda: {"available": False, "limit": TRADES_DEFAULT, "trades": []})
-    def trades(limit: int = Query(TRADES_DEFAULT, description="Rows to return; clamped to 1..500.")):        n = max(TRADES_MIN, min(TRADES_MAX, int(limit)))
+    def trades(limit: int = Query(TRADES_DEFAULT, description="Rows to return; clamped to 1..500.")):
+        n = max(TRADES_MIN, min(TRADES_MAX, int(limit)))
         rows = data.trades() or []
         return {"available": bool(rows), "limit": n, "trades": list(reversed(rows))[:n]}
 
     @app.get("/api/backtest")
     @guarded(lambda: {"available": False})
-    def backtest():        found = data.backtest()
+    def backtest():
+        found = data.backtest()
         if found is None:
             return {"available": False}
         run_id, metrics = found
@@ -651,7 +665,8 @@ def create_app(paths: Paths | None = None) -> FastAPI:
 
     @app.get("/api/calls")
     @guarded(lambda: {"available": False, "calls": [], "totals": dict(_EMPTY_TOTALS)})
-    def calls():        c = data.calls()
+    def calls():
+        c = data.calls()
         if c is None:
             return {"available": False, "calls": [], "totals": dict(_EMPTY_TOTALS)}
         return {"available": True, "calls": c["recent"], "totals": c["totals"]}

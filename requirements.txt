@@ -1,0 +1,19 @@
+# Direct dependencies (Python 3.14). Full pinned freeze: requirements.lock.txt
+# torch is installed from the CPU wheel index by scripts/setup.sh
+nautilus_trader==1.231.0
+skfolio>=1.8
+yfinance>=1.7
+pandas>=3.0
+numpy>=2.5
+pyarrow>=26
+scipy>=1.18
+scikit-learn>=1.9
+fastapi>=0.143
+uvicorn[standard]>=0.54
+pydantic>=2.14
+httpx>=0.28
+huggingface_hub>=2
+einops
+safetensors
+matplotlib
+pytest>=9

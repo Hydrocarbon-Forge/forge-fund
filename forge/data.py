@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,8 +44,20 @@ def fetch_history(tickers: Sequence[str], start: str = DEFAULT_START, end: str |
         return _empty_long()
     raw = yf.download(symbols, start=start, end=end, auto_adjust=True, progress=False,
                       threads=True, group_by="column")
+    per_ticker = _split_by_ticker(raw, symbols)
+    # Yahoo intermittently drops individual symbols from a batch ("possibly delisted"): retry them.
+    for attempt in range(2):
+        missing = [s for s in symbols if s not in per_ticker or per_ticker[s].dropna(how="all").empty]
+        if not missing:
+            break
+        log.info("retrying %d tickers missing from batch download (attempt %d): %s", len(missing), attempt + 1, missing)
+        time.sleep(1.5)
+        retry = yf.download(missing, start=start, end=end, auto_adjust=True, progress=False,
+                            threads=False, group_by="column")
+        per_ticker.update({t: b for t, b in _split_by_ticker(retry, missing).items()
+                           if not b.dropna(how="all").empty})
     frames = []
-    for symbol, bars in _split_by_ticker(raw, symbols).items():
+    for symbol, bars in per_ticker.items():
         part = bars[OHLCV].set_axis(_naive_ns(bars.index)).rename_axis("date").reset_index()
         frames.append(part.assign(ticker=symbol))
     if not frames:

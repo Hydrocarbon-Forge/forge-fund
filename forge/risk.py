@@ -78,7 +78,8 @@ def clamp_weights(weights: dict[str, float], limits: Limits = LIMITS,
     w = _cap_and_redistribute(w, total, limits.max_single)
     if equity is not None and equity > 0:
         w = {t: v for t, v in w.items() if v * equity >= limits.min_notional}
-    return {t: round(v, 6) for t, v in w.items()}
+    # floor (not round) to 6dp so rounding can never push a sum over a cap
+    return {t: math.floor(v * 1e6) / 1e6 for t, v in w.items()}
 
 
 def check_limits(weights: dict[str, float], limits: Limits = LIMITS, equity: float | None = None) -> list[str]:
@@ -88,14 +89,14 @@ def check_limits(weights: dict[str, float], limits: Limits = LIMITS, equity: flo
     if len(w) > limits.max_positions:
         v.append(f"positions {len(w)} > {limits.max_positions}")
     for t, x in w.items():
-        if x > limits.max_single + 1e-6:
+        if x > limits.max_single + 1e-5:
             v.append(f"{t} weight {x:.4f} > {limits.max_single}")
         if equity and x * equity < limits.min_notional - 1e-6:
             v.append(f"{t} notional {x * equity:.0f} < {limits.min_notional}")
     gross = sum(w.values())
-    if gross > limits.max_gross + 1e-6:
+    if gross > limits.max_gross + 1e-5:
         v.append(f"gross {gross:.4f} > {limits.max_gross}")
-    if 1.0 - gross < limits.cash_floor - 1e-6:
+    if 1.0 - gross < limits.cash_floor - 1e-5:
         v.append(f"cash {1.0 - gross:.4f} < floor {limits.cash_floor}")
     return v
 

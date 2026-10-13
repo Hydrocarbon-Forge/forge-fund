@@ -155,7 +155,7 @@ class KronosSettings:
     model_name: str = "Kronos-mini"            # smallest variant (4.1M params)
     tokenizer_name: str = "Kronos-Tokenizer-2k"
     max_context: int = 512
-    lookback: int = 256        # daily bars fed to the model
+    lookback: int = 128        # daily bars fed to the model (128 ~ 22s/101 tickers on 4 CPU cores)
     pred_len: int = 5          # forecast horizon (trading days)
     sample_count: int = 3
     temperature: float = 1.0
