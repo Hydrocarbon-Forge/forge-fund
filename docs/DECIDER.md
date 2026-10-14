@@ -67,3 +67,19 @@ To ensure full transparency and auditability, the fund never silently swaps brai
 
 - **Strictly Mocked Unit Tests**: Unit tests in `tests/test_gemini_client.py` and `tests/test_decision.py` mock the `agy` shell call (`call_gemini` or `subprocess.run`). Real `agy` commands are never spawned during `pytest`.
 - **Paper-Trading Only**: The fallback decider only feeds target weights into the paper-trading engine (`engine/paper.py`) via simulated execution. No broker or live exchange adapters exist.
+
+## Budget Awareness
+
+The decider is budget-aware to prevent small books (e.g., $200 paper fund) from allocating to unaffordable whole-share equities that get clipped to 0:
+
+- **What the Model Sees**:
+  - `px (last close $)` column in the UNIVERSE table providing the latest close for every symbol.
+  - A computed `BUDGET:` block near the `FUND:` line. On constrained books, it calculates the maximum allowed single position (`equity * max_single`, e.g. $50 on a $200 book), lists the affordable whole-share equity names, and explicitly flags unaffordable equities.
+  - System prompt hard rule: integer-share equity is whole lots, crypto is fractional, and weights for names the book cannot afford are clipped to 0 by the engine.
+- **The Clip Rule**:
+  - Equities trade in integer lots (`size_precision=0`). If `weight * equity < price`, the engine's `math.floor(tgt_w * eq / ask)` evaluates to 0 shares.
+  - Unaffordable weights are therefore discarded by the matching engine, which would otherwise leave the fund sitting in cash.
+- **Backtest Preservation**:
+  - At large equity (e.g., $100,000 backtests), all universe names easily satisfy `price <= equity * max_single`.
+  - The budget block automatically collapses to a concise no-op line (`BUDGET: equity $100,000 -> whole-share budget unconstrained.`), ensuring backtest prompts remain clean, deterministic, and unaffected.
+
