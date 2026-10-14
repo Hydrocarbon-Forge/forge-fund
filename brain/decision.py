@@ -43,6 +43,7 @@ def system_prompt(limits: Limits = LIMITS) -> str:
         f"- Total invested at most {limits.max_gross:.0%} of equity (so cash >= {1 - limits.max_gross:.0%}). Weights are fractions of TOTAL equity.\n"
         f"- Total crypto combined at most {limits.crypto_cap:.0%} of equity.\n"
         "- Only use ids that appear in the UNIVERSE table. Never invent ids.\n"
+        "- Integer-share equity is whole lots, crypto is fractional, and weights for names the book cannot afford are clipped to 0 by the engine — plan to the equity shown.\n"
         "MANDATE: this is a long-only equity fund (with select crypto), not a market-timing vehicle. Its job is to hold a diversified set of "
         "the best-looking large caps and select crypto. The normal state is roughly 60-80% invested across 6-10 names. Crypto is fractionally "
         f"sizeable and capped at {limits.crypto_cap:.0%} in aggregate. Hold more than 50% "
@@ -96,16 +97,21 @@ def _pct(x, d=1) -> str:
     return "na" if x is None or (isinstance(x, float) and not math.isfinite(x)) else f"{x * 100:+.{d}f}"
 
 
-def _row(i: str, r: pd.Series, k: pd.Series | None) -> str:
+def _px(x: float | None) -> str:
+    return "na" if x is None or (isinstance(x, float) and not math.isfinite(x)) else f"{x:.2f}"
+
+
+def _row(i: str, r: pd.Series, k: pd.Series | None, px: float | None = None) -> str:
     kr = "|".join([f"{k['exp_ret'] * 100:+.2f}", f"{k['p_up']:.2f}", f"{k['score']:+.1f}"]) if k is not None else "na|na|na"
     path = ",".join(str(int(p)) for p in r["path"])
-    return (f"{i}|{_pct(r['r1'])}|{_pct(r['r5'])}|{_pct(r['r20'])}|{_pct(r['r60'])}|{r['vol20'] * 100:.0f}|"
+    return (f"{i}|{_px(px)}|{_pct(r['r1'])}|{_pct(r['r5'])}|{_pct(r['r20'])}|{_pct(r['r60'])}|{r['vol20'] * 100:.0f}|"
             f"{r['rsi14']:.0f}|{_pct(r['d50'])}|{_pct(r['d200'])}|{r['p52']:.2f}|{r['volx']:.2f}|{kr}|{path}")
 
 
 def build_messages(label: str, features: pd.DataFrame, kronos: pd.DataFrame | None, view: PortfolioView,
                    masker: Masker, market: dict[str, float], prev_notes: str | None, prev_risk: str | None,
-                   limits: Limits = LIMITS, horizon: int = 5, regime: dict | None = None) -> list[dict]:
+                   limits: Limits = LIMITS, horizon: int = 5, regime: dict | None = None,
+                   prices: dict[str, float] | None = None) -> list[dict]:
     kidx = kronos.drop_duplicates("ticker").set_index("ticker") if kronos is not None and len(kronos) else None
     rows = []
     ex = ([masker.to_id(t) for t in list(features.index[:2])] + ["AAA", "BBB"])[:2]
@@ -113,7 +119,8 @@ def build_messages(label: str, features: pd.DataFrame, kronos: pd.DataFrame | No
     tickers = sorted(features.index, key=lambda t: masker.to_id(t))
     for t in tickers:
         k = kidx.loc[t] if kidx is not None and t in kidx.index else None
-        rows.append(_row(masker.to_id(t), features.loc[t], k))
+        px_val = prices.get(t) if prices is not None else None
+        rows.append(_row(masker.to_id(t), features.loc[t], k, px_val))
 
     eq_hist = [e for _, e in view.equity_history] or [view.equity]
     peak = max(eq_hist + [view.equity])
@@ -141,15 +148,50 @@ def build_messages(label: str, features: pd.DataFrame, kronos: pd.DataFrame | No
     crypto_ids = [masker.to_id(t) for t in tickers if is_crypto(t, limits)]
     asset_line = (f"ASSET CLASSES: Crypto names (aggregate cap {limits.crypto_cap:.0%}, fractionally sizeable): "
                   f"{', '.join(crypto_ids) if crypto_ids else 'none'}. All other names are US equities.")
+
+    crypto_tickers = [t for t in tickers if is_crypto(t, limits)]
+    equity_tickers = [t for t in tickers if not is_crypto(t, limits)]
+    crypto_str = ", ".join(crypto_ids) if crypto_ids else "none"
+
+    max_pos = view.equity * limits.max_single
+    pos_limit_str = f"${max_pos:,.0f}" if max_pos == int(max_pos) else f"${max_pos:,.2f}"
+
+    if prices and equity_tickers:
+        affordable_eq = []
+        unaffordable_eq = []
+        for t in equity_tickers:
+            p = prices.get(t)
+            if p is not None and math.isfinite(p) and p <= max_pos:
+                affordable_eq.append(t)
+            else:
+                unaffordable_eq.append(t)
+
+        is_constrained = (len(unaffordable_eq) > 0) and (len(affordable_eq) < len(equity_tickers) * 0.8)
+        if is_constrained:
+            aff_names = [masker.to_id(t) for t in sorted(affordable_eq)]
+            unaff_names = [masker.to_id(t) for t in sorted(unaffordable_eq)]
+            aff_str = ", ".join(aff_names) if aff_names else "none"
+            unaff_str = ", ".join(unaff_names) if unaff_names else "none"
+            budget_line = (
+                f"BUDGET: equity ${view.equity:,.0f} -> you can buy whole shares of {len(affordable_eq)} names (price <= {pos_limit_str}): {aff_str}.\n"
+                f"CRITICAL CONSTRAINT: Unaffordable whole-share names (price > {pos_limit_str}, clipped to 0 by engine): {unaff_str}.\n"
+                f"Fractional crypto ({crypto_str}) is always sizeable. Any equity weight above what the book can afford in whole shares is clipped to 0 by the engine — plan holdings using ONLY affordable whole-share names and/or fractional crypto."
+            )
+        else:
+            budget_line = f"BUDGET: equity ${view.equity:,.0f} -> whole-share budget unconstrained."
+    else:
+        budget_line = f"BUDGET: equity ${view.equity:,.0f} -> whole-share budget unconstrained."
+
     user = (
         f"AS OF: {label} (decision for the next open; you only see data through the prior close)\n"
         f"FUND: equity ${view.equity:,.0f} | cash {cash_pct * 100:.0f}% | since inception {_pct(since, 2)}% | "
         f"last period {_pct(period, 2)}% | drawdown from peak {_pct(dd, 2)}%\n"
+        f"{budget_line}\n"
         f"CURRENT HOLDINGS: {hold}\n"
         f"MARKET CONTEXT: {market_line}\n"
         f"{regime_line}\n"
         f"{asset_line}\n"
-        f"UNIVERSE ({len(rows)} names). Columns, pipe-separated: id|r1|r5|r20|r60 (% price change over 1/5/20/60 trading days)|"
+        f"UNIVERSE ({len(rows)} names). Columns, pipe-separated: id|px (last close $)|r1|r5|r20|r60 (% price change over 1/5/20/60 trading days)|"
         f"vol (annualised 20d volatility %)|rsi (14d)|d50|d200 (% vs 50/200-day average)|p52 (position in 52-week range 0-1)|"
         f"volx (20d vs 60d avg volume)|kr_ret (Kronos mean forecast % return over next {horizon} trading days)|"
         f"kr_pup (share of Kronos sample paths that end up)|kr_z (cross-sectional z-score of kr_ret)|"

@@ -125,6 +125,7 @@ def test_system_prompt_states_the_limits():
     assert "cash >= 20%" in sys_text
     assert "Total crypto combined at most 30%" in sys_text
     assert "stocks + crypto, one fund" in sys_text
+    assert "Integer-share equity is whole lots" in sys_text
 
 
 def test_prompt_distinguishes_crypto_and_equities(view):
@@ -136,6 +137,73 @@ def test_prompt_distinguishes_crypto_and_equities(view):
     assert "ASSET CLASSES:" in user
     assert "BTC-USD" in user
     assert "30%" in user
+
+
+def test_budget_small_equity_lists_affordable_and_flags_unaffordable():
+    tickers = ["AAPL", "MSFT", "PFE", "T", "BTC-USD"]
+    close = make_close(tickers, n_days=300, seed=10)
+    feats = compute_features(close, make_volume(close, seed=10), close.index[-1])
+    view = make_view(equity=200.0)
+    prices = {"PFE": 30.0, "T": 25.0, "AAPL": 150.0, "MSFT": 300.0, "BTC-USD": 60000.0}
+    masker = Masker(tickers, enabled=False)
+    msgs = build_messages(LABEL, feats, None, view, masker, MARKET, None, None, prices=prices)
+    user = msgs[1]["content"]
+
+    assert "BUDGET: equity $200" in user
+    assert "you can buy whole shares of 2 names (price <= $50): PFE, T." in user
+    assert "CRITICAL CONSTRAINT: Unaffordable whole-share names (price > $50, clipped to 0 by engine): AAPL, MSFT." in user
+    assert "Fractional crypto (BTC-USD) is always sizeable" in user
+
+
+def test_budget_large_equity_is_short_noop():
+    tickers = ["AAPL", "MSFT", "PFE", "T", "BTC-USD"]
+    close = make_close(tickers, n_days=300, seed=10)
+    feats = compute_features(close, make_volume(close, seed=10), close.index[-1])
+    view = make_view(equity=100_000.0)
+    prices = {"PFE": 30.0, "T": 25.0, "AAPL": 150.0, "MSFT": 300.0, "BTC-USD": 60000.0}
+    masker = Masker(tickers, enabled=False)
+    msgs = build_messages(LABEL, feats, None, view, masker, MARKET, None, None, prices=prices)
+    user = msgs[1]["content"]
+
+    assert "BUDGET: equity $100,000 -> whole-share budget unconstrained." in user
+    assert "CRITICAL CONSTRAINT" not in user
+    assert "Unaffordable" not in user
+
+
+def test_px_column_present_and_correct_in_table():
+    tickers = ["AAPL", "BTC-USD", "T"]
+    close = make_close(tickers, n_days=300, seed=10)
+    feats = compute_features(close, make_volume(close, seed=10), close.index[-1])
+    view = make_view(equity=200.0)
+    prices = {"AAPL": 150.25, "BTC-USD": 83254.01}
+    masker = Masker(tickers, enabled=False)
+    msgs = build_messages(LABEL, feats, None, view, masker, MARKET, None, None, prices=prices)
+    user = msgs[1]["content"]
+
+    assert "Columns, pipe-separated: id|px (last close $)|r1|" in user
+    assert "\nAAPL|150.25|" in user
+    assert "\nBTC-USD|83254.01|" in user
+    assert "\nT|na|" in user
+
+
+def test_budget_small_equity_anonymized_masks_tickers():
+    tickers = ["AAPL", "MSFT", "PFE", "T", "BTC-USD"]
+    close = make_close(tickers, n_days=300, seed=10)
+    feats = compute_features(close, make_volume(close, seed=10), close.index[-1])
+    view = make_view(equity=200.0)
+    prices = {"PFE": 30.0, "T": 25.0, "AAPL": 150.0, "MSFT": 300.0, "BTC-USD": 60000.0}
+    masker = Masker(tickers, enabled=True)
+    msgs = build_messages(LABEL, feats, None, view, masker, MARKET, None, None, prices=prices)
+    user = msgs[1]["content"]
+
+    assert "BUDGET: equity $200" in user
+    for t in ["AAPL", "MSFT", "PFE", "BTC-USD"]:
+        assert t not in user
+    pfe_id = masker.to_id("PFE")
+    t_id = masker.to_id("T")
+    aapl_id = masker.to_id("AAPL")
+    assert pfe_id in user and t_id in user and aapl_id in user
+
 
 
 

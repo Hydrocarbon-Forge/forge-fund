@@ -179,8 +179,9 @@ class DecisionPipeline:
         br: BrainResult | None = None
         if cfg.use_claude:
             model, deep = self._model_for(date)
+            prices = self.m.p["close"].loc[asof].dropna().to_dict() if asof in self.m.p["close"].index else None
             msgs = build_messages(label, feats, kdf, view, self.masker, market, self.prev_notes, self.prev_risk, self.limits,
-                                  KRONOS.pred_len, regime=universe_regime(feats))
+                                  KRONOS.pred_len, regime=universe_regime(feats), prices=prices)
             if self.limit_blocked:
                 self.stats["fallback_holds"] += 1
                 meta.update(brain="hold", status="claude_limit", error="Claude usage limit not cleared; decision skipped")
