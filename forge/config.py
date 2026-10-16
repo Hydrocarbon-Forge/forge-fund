@@ -21,16 +21,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DASHBOARD_HOST = "192.168.1.201"
 DASHBOARD_PORT = 8905
 
-BENCHMARK = "SPY"
-# Live paper book = $200 (Gavin, 2026-10-14). Override with FORGE_PAPER_CAPITAL if you want
-# a different book size; the daily runner and dashboard read this.
-PAPER_CAPITAL = float(os.environ.get("FORGE_PAPER_CAPITAL", "200.0"))
-# Backtest default = $100k (all historical backtests in logs/ ran at this size).
-# Override with FORGE_STARTING_CAPITAL for one-off runs.
-STARTING_CAPITAL = float(os.environ.get("FORGE_STARTING_CAPITAL", "100_000.0"))
-MODE = "paper"  # structurally the only mode this codebase knows about
-
-
 # --------------------------------------------------------------------------- env
 def load_env(path: Path | None = None) -> None:
     """Load KEY=VALUE lines from .env into os.environ (without overriding existing)."""
@@ -45,6 +35,19 @@ def load_env(path: Path | None = None) -> None:
         key = key.strip()
         val = val.strip().strip('"').strip("'")
         os.environ.setdefault(key, val)
+
+
+load_env()
+
+BENCHMARK = "SPY"
+# Live paper book = $200 (Gavin, 2026-10-14). Override with FORGE_PAPER_CAPITAL if you want
+# a different book size; the daily runner and dashboard read this.
+PAPER_CAPITAL = float(os.environ.get("FORGE_PAPER_CAPITAL", "200.0"))
+# Backtest default = $100k (all historical backtests in logs/ ran at this size).
+# Override with FORGE_STARTING_CAPITAL for one-off runs.
+STARTING_CAPITAL = float(os.environ.get("FORGE_STARTING_CAPITAL", "100_000.0"))
+MODE = "paper"  # structurally the only mode this codebase knows about
+STOCKS_ONLY = os.environ.get("FORGE_STOCKS_ONLY", "true").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _secret_values() -> list[str]:
