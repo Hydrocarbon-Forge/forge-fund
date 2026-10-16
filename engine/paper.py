@@ -22,7 +22,8 @@ from pathlib import Path
 import pandas as pd
 
 from engine.sim import SimResult, SimRunner
-from forge.config import BENCHMARK, MODE, STARTING_CAPITAL, Paths
+from forge.config import BENCHMARK, MODE, STARTING_CAPITAL, STOCKS_ONLY, Paths
+from forge.risk import is_crypto
 from forge.types import Plan, PortfolioView
 
 log = logging.getLogger("forge.paper")
@@ -64,6 +65,34 @@ def plan_from_json(d: dict) -> Plan:
     return Plan(d.get("targets"), bool(d.get("halted")), d.get("meta") or {})
 
 
+def held_crypto_tickers(paths: Paths, ledger: list[dict] | None = None) -> list[str]:
+    """Return any crypto tickers currently held in the latest portfolio or ledger."""
+    if ledger is not None:
+        if ledger:
+            last = ledger[-1]
+            targets = last.get("plan", {}).get("targets") or {}
+            return [t for t, w in targets.items() if is_crypto(t) and float(w or 0) > 0]
+        return []
+
+    pf_path = paths.state / "portfolio.json"
+    if pf_path.exists():
+        try:
+            pf = json.loads(pf_path.read_text())
+            positions = pf.get("positions", [])
+            return [p["ticker"] for p in positions
+                    if is_crypto(p.get("ticker", "")) and float(p.get("qty", 0)) > 0]
+        except Exception:
+            pass
+
+    rows = read_ledger(paths)
+    if rows:
+        last = rows[-1]
+        targets = last.get("plan", {}).get("targets") or {}
+        return [t for t, w in targets.items() if is_crypto(t) and float(w or 0) > 0]
+
+    return []
+
+
 # ------------------------------------------------------------------------------------ cycle
 def run_cycle(*, paths: Paths, market, decision_date: str, live_prices: dict[str, float], price_source: str,
               live_decide, universe: list[str], capital: float = STARTING_CAPITAL, replace: bool = False,
@@ -88,9 +117,15 @@ def run_cycle(*, paths: Paths, market, decision_date: str, live_prices: dict[str
     close = market.p["close"]
     open_ = market.p["open"]
     win = close.index[(close.index >= pd.Timestamp(inception)) & (close.index < pd.Timestamp(decision_date))]
-    runner = SimRunner(open_.loc[win, universe], close.loc[win, universe], capital, decide,
+
+    held_crypto = [t for t in dict.fromkeys(held_crypto_tickers(paths) + (held_crypto_tickers(paths, past) if past else [])) if is_crypto(t)] if STOCKS_ONLY else []
+    past_tickers = [t for r in past for t in (r.get("plan", {}).get("targets") or {})]
+    sim_universe = list(dict.fromkeys(universe + held_crypto + past_tickers))
+    sim_universe = [t for t in sim_universe if t in close.columns and t in open_.columns]
+
+    runner = SimRunner(open_.loc[win, sim_universe], close.loc[win, sim_universe], capital, decide,
                        [r["date"] for r in past] + [decision_date], price_overrides=overrides,
-                       live_date=decision_date, tickers=universe)
+                       live_date=decision_date, tickers=sim_universe)
     res = runner.run()
     if res.errors:
         raise RuntimeError(f"engine errors: {res.errors[:3]}")

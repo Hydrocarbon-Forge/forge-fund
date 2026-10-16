@@ -22,9 +22,9 @@ import pandas as pd
 
 from brain.claude_client import ClaudeClient
 from brain.decision import ClaudeBrain
-from engine.paper import read_ledger, run_cycle
+from engine.paper import held_crypto_tickers, read_ledger, run_cycle
 from forge.calendar import decision_date, market_open_now
-from forge.config import BENCHMARK, KRONOS, PAPER_CAPITAL, get_paths
+from forge.config import BENCHMARK, KRONOS, PAPER_CAPITAL, STOCKS_ONLY, get_paths
 from forge.data import latest_prices, update_store
 from forge.logging_setup import setup_logging
 from forge.universe import SP100, UNIVERSE
@@ -109,7 +109,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         # ---- live prices for the simulated 09:35 fill (stored closes when the market is closed)
-        want = list(dict.fromkeys(mkt.universe + [BENCHMARK]))
+        held_crypto = held_crypto_tickers(paths) if STOCKS_ONLY else []
+        want = list(dict.fromkeys(mkt.universe + [BENCHMARK] + held_crypto))
         prices, source = latest_prices(want)
         if not market_open_now():
             source = "last_close"
