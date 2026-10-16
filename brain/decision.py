@@ -34,19 +34,47 @@ SCHEMA_EXAMPLE = ('{"holdings": {"<ID>": {"weight": 0.12, "rationale": "<=25 wor
                   '"cash": 0.20, "notes": "<=120 words", "risk_view": "low|med|high"}')
 
 
-def system_prompt(limits: Limits = LIMITS) -> str:
+def system_prompt(limits: Limits = LIMITS, has_crypto: bool = True) -> str:
+    if has_crypto:
+        return (
+            "You are the portfolio manager of a small PAPER-TRADING fund investing in US large caps and crypto "
+            "(stocks + crypto, one fund). Once per rebalance you output target portfolio weights.\n"
+            "HARD RULES (code enforces them again, so violations are simply clipped):\n"
+            f"- Long-only. At most {limits.max_positions} holdings. At most {limits.max_single:.0%} in any one name.\n"
+            f"- Total invested at most {limits.max_gross:.0%} of equity (so cash >= {1 - limits.max_gross:.0%}). Weights are fractions of TOTAL equity.\n"
+            f"- Total crypto combined at most {limits.crypto_cap:.0%} of equity.\n"
+            "- Only use ids that appear in the UNIVERSE table. Never invent ids.\n"
+            "- Integer-share equity is whole lots, crypto is fractional, and weights for names the book cannot afford are clipped to 0 by the engine — plan to the equity shown.\n"
+            "MANDATE: this is a long-only equity fund (with select crypto), not a market-timing vehicle. Its job is to hold a diversified set of "
+            "the best-looking large caps and select crypto. The normal state is roughly 60-80% invested across 6-10 names. Crypto is fractionally "
+            f"sizeable and capped at {limits.crypto_cap:.0%} in aggregate. Hold more than 50% "
+            "cash ONLY when the INDEX line shows concrete stress RIGHT NOW (drawdown from its 52-week high worse than -10%, "
+            "or 20-day volatility above ~25%). Sitting mostly in cash for an extended period is a failure of the mandate, "
+            "not a conservative choice. Higher cash is a response to stress visible in today's data, never a standing preference.\n"
+            "GUIDANCE:\n"
+            "- Trading costs money: do not churn. Keep current holdings unless the evidence changed.\n"
+            "- The kr_* columns are forecasts from a small statistical foundation model (Kronos). They are noisy and "
+            "often wrong; treat them as ONE weak input next to trend, momentum, volatility and the market context. "
+            "Do not wait for Kronos to be 'proven' before investing: if you distrust it, give it little weight and decide "
+            "on trend, momentum, volatility and the market context.\n"
+            "- Do not assume any information beyond what is in the prompt.\n"
+            "OUTPUT: reply with ONE JSON object and nothing else (no markdown, no prose) with exactly this shape:\n"
+            f"{SCHEMA_EXAMPLE}\n"
+            "holdings weights + cash must sum to 1.0 (within 0.02). rationale: <=25 words each. "
+            "notes: <=120 words - your regime view, written for the human audit log only (you will NOT see it again; "
+            "every review is decided fresh from the data and the current holdings). "
+            "risk_view: your overall market risk assessment."
+        )
     return (
-        "You are the portfolio manager of a small PAPER-TRADING fund investing in US large caps and crypto "
-        "(stocks + crypto, one fund). Once per rebalance you output target portfolio weights.\n"
+        "You are the portfolio manager of a small PAPER-TRADING fund investing in US large caps. "
+        "Once per rebalance you output target portfolio weights.\n"
         "HARD RULES (code enforces them again, so violations are simply clipped):\n"
         f"- Long-only. At most {limits.max_positions} holdings. At most {limits.max_single:.0%} in any one name.\n"
         f"- Total invested at most {limits.max_gross:.0%} of equity (so cash >= {1 - limits.max_gross:.0%}). Weights are fractions of TOTAL equity.\n"
-        f"- Total crypto combined at most {limits.crypto_cap:.0%} of equity.\n"
         "- Only use ids that appear in the UNIVERSE table. Never invent ids.\n"
-        "- Integer-share equity is whole lots, crypto is fractional, and weights for names the book cannot afford are clipped to 0 by the engine — plan to the equity shown.\n"
-        "MANDATE: this is a long-only equity fund (with select crypto), not a market-timing vehicle. Its job is to hold a diversified set of "
-        "the best-looking large caps and select crypto. The normal state is roughly 60-80% invested across 6-10 names. Crypto is fractionally "
-        f"sizeable and capped at {limits.crypto_cap:.0%} in aggregate. Hold more than 50% "
+        "- Integer-share equity is whole lots, and weights for names the book cannot afford are clipped to 0 by the engine — plan to the equity shown.\n"
+        "MANDATE: this is a long-only equity fund, not a market-timing vehicle. Its job is to hold a diversified set of "
+        "the best-looking large caps. The normal state is roughly 60-80% invested across 6-10 names. Hold more than 50% "
         "cash ONLY when the INDEX line shows concrete stress RIGHT NOW (drawdown from its 52-week high worse than -10%, "
         "or 20-day volatility above ~25%). Sitting mostly in cash for an extended period is a failure of the mandate, "
         "not a conservative choice. Higher cash is a response to stress visible in today's data, never a standing preference.\n"
@@ -146,12 +174,17 @@ def build_messages(label: str, features: pd.DataFrame, kronos: pd.DataFrame | No
                    f"r60 {_pct(rg['med_r60'])}% | dispersion of r20 {rg['disp_r20'] * 100:.1f}pp | median vol20 {rg['med_vol20'] * 100:.0f}% | "
                    f"within 10% of 52w high {rg['near_high'] * 100:.0f}%") if rg else "UNIVERSE REGIME: unavailable"
     crypto_ids = [masker.to_id(t) for t in tickers if is_crypto(t, limits)]
-    asset_line = (f"ASSET CLASSES: Crypto names (aggregate cap {limits.crypto_cap:.0%}, fractionally sizeable): "
-                  f"{', '.join(crypto_ids) if crypto_ids else 'none'}. All other names are US equities.")
-
     crypto_tickers = [t for t in tickers if is_crypto(t, limits)]
     equity_tickers = [t for t in tickers if not is_crypto(t, limits)]
+    has_crypto = len(crypto_tickers) > 0
     crypto_str = ", ".join(crypto_ids) if crypto_ids else "none"
+
+    if has_crypto:
+        asset_line = (f"ASSET CLASSES: Crypto names (aggregate cap {limits.crypto_cap:.0%}, fractionally sizeable): "
+                      f"{crypto_str}. All other names are US equities.")
+        asset_block = f"{asset_line}\n"
+    else:
+        asset_block = ""
 
     max_pos = view.equity * limits.max_single
     pos_limit_str = f"${max_pos:,.0f}" if max_pos == int(max_pos) else f"${max_pos:,.2f}"
@@ -172,11 +205,18 @@ def build_messages(label: str, features: pd.DataFrame, kronos: pd.DataFrame | No
             unaff_names = [masker.to_id(t) for t in sorted(unaffordable_eq)]
             aff_str = ", ".join(aff_names) if aff_names else "none"
             unaff_str = ", ".join(unaff_names) if unaff_names else "none"
-            budget_line = (
-                f"BUDGET: equity ${view.equity:,.0f} -> you can buy whole shares of {len(affordable_eq)} names (price <= {pos_limit_str}): {aff_str}.\n"
-                f"CRITICAL CONSTRAINT: Unaffordable whole-share names (price > {pos_limit_str}, clipped to 0 by engine): {unaff_str}.\n"
-                f"Fractional crypto ({crypto_str}) is always sizeable. Any equity weight above what the book can afford in whole shares is clipped to 0 by the engine — plan holdings using ONLY affordable whole-share names and/or fractional crypto."
-            )
+            if has_crypto:
+                budget_line = (
+                    f"BUDGET: equity ${view.equity:,.0f} -> you can buy whole shares of {len(affordable_eq)} names (price <= {pos_limit_str}): {aff_str}.\n"
+                    f"CRITICAL CONSTRAINT: Unaffordable whole-share names (price > {pos_limit_str}, clipped to 0 by engine): {unaff_str}.\n"
+                    f"Fractional crypto ({crypto_str}) is always sizeable. Any equity weight above what the book can afford in whole shares is clipped to 0 by the engine — plan holdings using ONLY affordable whole-share names and/or fractional crypto."
+                )
+            else:
+                budget_line = (
+                    f"BUDGET: equity ${view.equity:,.0f} -> you can buy whole shares of {len(affordable_eq)} names (price <= {pos_limit_str}): {aff_str}.\n"
+                    f"CRITICAL CONSTRAINT: Unaffordable whole-share names (price > {pos_limit_str}, clipped to 0 by engine): {unaff_str}.\n"
+                    f"Any equity weight above what the book can afford in whole shares is clipped to 0 by the engine — plan holdings using ONLY affordable whole-share names."
+                )
         else:
             budget_line = f"BUDGET: equity ${view.equity:,.0f} -> whole-share budget unconstrained."
     else:
@@ -190,7 +230,7 @@ def build_messages(label: str, features: pd.DataFrame, kronos: pd.DataFrame | No
         f"CURRENT HOLDINGS: {hold}\n"
         f"MARKET CONTEXT: {market_line}\n"
         f"{regime_line}\n"
-        f"{asset_line}\n"
+        f"{asset_block}"
         f"UNIVERSE ({len(rows)} names). Columns, pipe-separated: id|px (last close $)|r1|r5|r20|r60 (% price change over 1/5/20/60 trading days)|"
         f"vol (annualised 20d volatility %)|rsi (14d)|d50|d200 (% vs 50/200-day average)|p52 (position in 52-week range 0-1)|"
         f"volx (20d vs 60d avg volume)|kr_ret (Kronos mean forecast % return over next {horizon} trading days)|"
@@ -204,7 +244,7 @@ def build_messages(label: str, features: pd.DataFrame, kronos: pd.DataFrame | No
         f"Rules: \"holdings\" maps id -> {{weight, rationale}}; weights are fractions of total equity; holdings weights + cash = 1.0; "
         f"risk_view is exactly one of: low, med, high."
     )
-    return [{"role": "system", "content": system_prompt(limits)}, {"role": "user", "content": user}]
+    return [{"role": "system", "content": system_prompt(limits, has_crypto=has_crypto)}, {"role": "user", "content": user}]
 
 
 # --------------------------------------------------------------------------------- the brain
