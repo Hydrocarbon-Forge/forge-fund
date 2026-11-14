@@ -1,195 +1,195 @@
-<p align="center"><b>A paper-first AI hedge fund that runs on one CPU-only machine.</b></p>
+<h1 align="center">forge-fund</h1>
+
+<p align="center"><b>A paper-first AI equity fund that runs on one CPU-only machine.</b><br>
+Research and simulation only. Not financial advice, and no profit is claimed.</p>
 
 <p align="center">
 <a href="LICENSE"><img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+<img alt="language: Python" src="https://img.shields.io/badge/python-3.14%2B-blue">
+<img alt="trading: paper only" src="https://img.shields.io/badge/trading-paper%20only-success">
+</p>
+
+<p align="center">
+<a href="#what-it-is">What it is</a> ·
+<a href="#quick-start">Quick start</a> ·
+<a href="#how-it-works">How it works</a> ·
+<a href="#testing">Testing</a> ·
+<a href="SPEC.md">Spec</a> ·
+<a href="docs/CONTRACTS.md">Contracts</a> ·
+<a href="#license">License</a>
 </p>
 
 ---
 
-# forge-fund — a paper-first AI hedge fund
+## What it is
 
-An end-to-end, **paper-trading-only** equity fund that runs entirely on one CPU-only machine
-(4 cores, ~7 GB RAM, no GPU, Python 3.14). Claude is the portfolio manager, Kronos supplies a
-forecasting signal, skfolio sizes the positions, hard-coded risk limits clip everything, and
-Nautilus Trader simulates execution and keeps the books. A FastAPI dashboard shows the result.
+forge-fund is a research and simulation tool. It runs a daily, paper-only equity portfolio loop and a
+historical backtest of the same pipeline. A language model makes the portfolio decisions, a forecasting
+model supplies a signal, a portfolio optimizer sizes positions, hard-coded risk limits clip the result, and
+a simulated execution engine (Nautilus Trader, cash account) records fills and keeps the books. A small
+FastAPI dashboard shows the state.
 
-## Honest framing (read this first)
+Universe: S&P 100 constituents, with SPY as the benchmark. Long-only, whole shares.
 
-* **No strategy can guarantee profits, and this project does not claim one.** It delivers a working
-  backtest pipeline, a live *paper* loop, enforced risk limits and a dashboard with real PnL numbers.
-  Whether the strategy has an edge is an open research question that this repo *measures and reports*.
-* Everything is **paper**. There is no broker adapter, no live data/execution client and no API key for
-  one anywhere in the code; `tests/test_no_live.py` enforces that structurally. Going live is a separate
-  decision that needs a human, broker credentials and the work listed in
-  [Going live later](#going-live-later-documented-not-built).
-* Backtests are one historical path with known biases (survivorship in the universe, modelled costs,
-  a small number of independent decisions). See [Results](#backtest-results) and
-  [Known limitations](#known-limitations).
+**Important:**
 
-## What it does
+* This is **not financial advice** and not a product for managing money. Nothing here recommends any trade.
+* **No strategy can guarantee profits, and this project does not claim one.** Whether the strategy has any
+  edge is an open question that the repo measures and reports, not something it asserts.
+* Everything is **paper**. The codebase contains no broker adapter and no live data or execution client.
+  `tests/test_no_live.py` checks this structurally. Going live would be a separate, human-led project.
 
-Universe: S&P 100 (US large caps) + SPY as benchmark. Long-only, paper capital **$100,000**, whole shares.
+## Features
 
-```
-yfinance daily bars ─► data/ohlcv_daily.parquet
-        │
-        ├─► Kronos-mini (CPU)  ─► per-ticker 5-day forecast paths ─► exp_ret / p_up / dispersion / z-score
-        │                                                              (data/forecasts_YYYYMMDD.parquet)
-        ▼
- market snapshot per ticker (returns, vol, RSI, MA distance, 52w position, volume, 60d path)
-        │      + Kronos columns + current portfolio & PnL + the previous review's notes
-        ▼
- Claude (local OpenAI-compatible endpoint) ─► STRICT JSON {holdings{id:{weight,rationale}},cash,notes,risk_view}
-        │     schema-validated; one repair retry; on any failure => HOLD the current portfolio (never guess)
-        ▼
- skfolio MeanRisk (max utility, Ledoit-Wolf covariance, long-only, budget = invested fraction,
-        │     alpha = Grinold-style IC·σ·z from Kronos z-score + Claude conviction)
-        ▼
- forge.risk.clamp_weights  ─► max 10 names · ≤25% per name · ≤80% gross · ≥10% cash · ≥$500 per position
-        ▼
- Nautilus simulated venue (CASH account): sells at 09:35:01 ET, buys at 09:35:02, mark at 16:00 ET
-        ▼
- state/*.json(l) ─► FastAPI dashboard on 192.168.1.201:8905
-```
-
-### Components
-
-| Path | Role |
-|---|---|
-| `forge/` | config (paths, limits, secrets/redaction), universe, data store (yfinance→parquet), risk limits, calendar, shared types |
-| `kronos/forecast.py` | Kronos-mini (4.1M params) + `Kronos-Tokenizer-2k`, CPU only; per-sample paths, seeded, cached per as-of date |
-| `brain/` | `claude_client.py` (OpenAI-compatible, 429/Retry-After handling, 9 req/min client-side limiter, cost log), `schema.py` (strict validation), `features.py`, `decision.py` (prompt, anonymisation, repair, response cache) |
-| `optimize/portfolio.py` | skfolio wrapper + inverse-vol fallback |
-| `engine/sim.py` | Nautilus execution/accounting core shared by backtest and paper |
-| `engine/paper.py` | event-sourced paper cycle: `state/ledger.jsonl` replayed through Nautilus each day |
-| `engine/metrics.py` | CAGR, vol, Sharpe, Sortino, max DD, win rates, CAPM alpha/beta, bootstrap CI, rank-IC |
-| `run/` | `pipeline.py` (the decider), `run_backtest.py`, `run_daily.py`, `report.py` |
-| `api/` | dashboard (`app.py`, `server.py`, `static/index.html`; read-only, loopback-only, no CDN) |
-| `scripts/` | `setup.sh` (bootstrap), `run_daily.sh` (cron wrapper), `make_demo_state.py` |
-| `tests/` | pytest suite (unit + smoke + end-to-end on synthetic data; a real-model Kronos smoke test) |
-
-### Not used, on purpose
-* **Freqtrade** is a crypto framework — not applicable to US equities.
-* **Hummingbot** ("hummifund") is crypto market-making — not applicable to a US-equity daily-rebalance
-  fund. Both are skipped entirely.
+* **Daily paper cycle** (`run/run_daily.py`): refresh daily bars from yfinance, compute Kronos forecasts,
+  ask Claude for a decision, optimize weights, apply risk limits, and simulate fills.
+* **Forecast signal** (`kronos/forecast.py`): Kronos-mini (the smallest Kronos variant), run on CPU. Outputs a
+  per-ticker expected return, probability of up move, dispersion, and a cross-sectional z-score. Forecasts are
+  cached per as-of date.
+* **LLM decision with strict validation** (`brain/`): one batched call per rebalance to an OpenAI-compatible
+  endpoint. The response must match a strict JSON schema, with one repair retry. On any failure the fund
+  **holds** its current portfolio rather than guessing. A Gemini CLI fallback is enabled by default and can be
+  turned off with `--no-gemini`.
+* **Portfolio sizing** (`optimize/portfolio.py`): skfolio `MeanRisk` with a Ledoit-Wolf covariance estimate,
+  long-only, with an inverse-volatility fallback if the optimizer fails.
+* **Hard risk limits, enforced in code** (`forge/risk.py`, `forge/config.py`): see [Risk controls](#risk-controls).
+* **Simulated execution and accounting** (`engine/sim.py`, `engine/paper.py`): an event-sourced ledger
+  (`state/ledger.jsonl`) is replayed through Nautilus each cycle.
+* **Backtest of the full pipeline** (`run/run_backtest.py`): weekly or daily rebalances, with metrics in
+  `engine/metrics.py` (CAGR, volatility, Sharpe, Sortino, max drawdown, CAPM alpha and beta, a block-bootstrap
+  confidence interval on excess return, trade win rate, and rank IC of the Kronos signal).
+* **Anonymised backtest prompts**: in backtests, Claude sees opaque ids and "sim-day N" rather than real
+  tickers or dates. This reduces recall of known history but does not remove leakage.
+* **Read-only dashboard** (`api/`): FastAPI endpoints for equity, positions, the latest decision, forecasts,
+  PnL, trades, backtest summary, and Claude call log. All endpoints are GET-only.
 
 ## Quick start
 
-```bash
-scripts/setup.sh                 # venv, deps (CPU torch), pinned Kronos source, Kronos-mini weights
-# .env must contain CLAUDE_BASE_URL / CLAUDE_LOCAL_TOKEN / CLAUDE_MODEL (chmod 600, gitignored, never printed)
+Requires Python 3.14 and a local OpenAI-compatible Claude endpoint. Set the endpoint in `.env`.
 
-.venv/bin/python -m pytest -q                                   # unit + smoke + e2e tests
-.venv/bin/python -m run.run_backtest --start 2023-01-03 --freq weekly   # full pipeline backtest, prints real metrics
-.venv/bin/python -m run.run_daily                                # one paper cycle (data→Kronos→Claude→skfolio→Nautilus)
-.venv/bin/python -m api.server                                   # dashboard on http://192.168.1.201:8905
+```bash
+scripts/setup.sh   # venv, CPU-only torch, pinned Kronos source (vendor/Kronos), Kronos-mini weights
+                   # creates a .env template if missing (chmod 600, gitignored)
+# Edit .env: set CLAUDE_BASE_URL, CLAUDE_LOCAL_TOKEN and CLAUDE_MODEL
+
+.venv/bin/python -m pytest -q                                            # test suite
+.venv/bin/python -m run.run_backtest --start 2023-01-03 --freq weekly    # full-pipeline backtest
+.venv/bin/python -m run.run_daily --dry-run                              # one paper cycle, nothing written
+.venv/bin/python -m api.server                                           # dashboard (host and port in forge/config.py)
 ```
 
-Useful flags: `run_backtest --no-claude` (rule baseline), `--no-kronos`, `--freq daily|weekly|N`,
-`--phase kronos` (precompute forecasts in a separate process), `--model haiku`;
-`run_daily --dry-run | --prepare | --force | --resume`.
+Useful flags:
 
-### Scheduling (cron-ready)
+* `run_backtest`: `--no-claude` (rule-based baseline), `--no-kronos`, `--freq daily|weekly|N`,
+  `--phase kronos` (precompute forecasts in a separate process), `--model <name>`, `--no-anonymize`
+  (shows real tickers to Claude; leaks information).
+* `run_daily`: `--prepare` (data and Kronos only), `--dry-run`, `--force` (redo today), `--resume` (clear a loss-cap halt),
+  `--no-fetch`, `--no-claude`, `--no-kronos`, `--no-gemini`.
+
+### Scheduling
+
+`scripts/run_daily.sh` is a cron wrapper. Example crontab (New York time):
 
 ```cron
 CRON_TZ=America/New_York
-30 18 * * 1-5  /path/to/forge-fund/scripts/run_daily.sh --prepare   # evening: refresh data + Kronos forecasts
-35  9 * * 1-5  /path/to/forge-fund/scripts/run_daily.sh             # 09:35 ET: decide + paper-trade
+30 18 * * 1-5  /path/to/forge-fund/scripts/run_daily.sh --prepare   # evening: refresh data and Kronos
+35  9 * * 1-5  /path/to/forge-fund/scripts/run_daily.sh             # 09:35 ET: decide and paper-trade
 ```
-Exit codes: `0` ok · `2` error · `3` halted by the loss cap (review, then `run_daily.sh --resume`).
-Only one cycle can run at a time (file lock). CPU budget: Kronos (heavy, ~25 s) runs before Nautilus
-(light) and never concurrently with another cycle.
 
-### Claude usage
-* Endpoint: `CLAUDE_BASE_URL` (OpenAI `/chat/completions`), bearer token from `.env` only. The token is
-  never logged: every log line and exception passes through `forge.config.redact()`.
-* One batched call per rebalance. **Sonnet** on the first rebalance of each ISO week (deep review),
-  **haiku** otherwise. 10 req/min per IP is respected by a client-side limiter plus `Retry-After` handling.
-* Every call is appended to `logs/decision_log.jsonl` (prompt hash, model, tokens, latency, estimated
-  list-price cost, status). Prompt hashes identify a prompt without storing it.
+Exit codes: `0` ok, `2` error, `3` halted by the loss cap (review, then run with `--resume`). A file lock
+allows only one cycle at a time.
 
-## Risk controls (enforced in code, after the optimizer)
+## How it works
 
-| Control | Value | Where |
-|---|---|---|
-| Max positions | 10 | `forge.risk.clamp_weights` |
-| Max single name | 25% of equity | same |
-| Max gross exposure | 80% (long-only ⇒ cash ≥ 20%; the 10% cash floor is subsumed but still enforced) | same |
-| Min position notional | $500 | clamp + engine skip |
-| Order sanity | whole shares, price within 25% of last close, order ≤ 30% of equity | `forge.risk.order_sanity` |
-| Single-run loss cap | equity down > 2% since the previous run ⇒ **HALT**, log, no orders | `forge.risk.loss_cap_breached`, `run/pipeline.py` |
-| Cash account | Nautilus rejects any order needing leverage/borrowing | `engine/sim.py` |
-| Parse/API failure | **hold** current portfolio — never guess | `brain/decision.py` |
-| Paper-only | no live client/adapter exists in the codebase | `tests/test_no_live.py` |
+Pipeline:
 
-In paper mode a halt writes `state/halt.json` and persists until you run `run_daily --resume`. In backtests
-a halt skips that rebalance and trading resumes at the next one (otherwise one bad week would end the
-simulation); halts are counted in the report. Note the cap is per *run*, so with weekly rebalances it is
-effectively a weekly loss cap.
+```
+yfinance daily bars -> data/ohlcv_daily.parquet
+  -> Kronos-mini forecasts (per ticker, cached per as-of date)
+  -> market snapshot + Kronos columns + current portfolio + previous review notes
+  -> Claude (OpenAI-compatible endpoint) -> strict JSON: holdings, cash, notes, risk view
+       (invalid output -> repair retry -> on failure HOLD)
+  -> skfolio MeanRisk sizing
+  -> risk clamps (forge/risk.py)
+  -> simulated venue (Nautilus, cash account) -> state/ and dashboard
+```
 
-## Backtest methodology (what is and is not controlled)
-
-* Decisions at 09:35 ET use bars **strictly before** that day; fills are at that day's open ± 1 bp half-spread
-  with a 1 bp fee per side; equity is marked at the close. A test (`test_no_lookahead_...`) corrupts all
-  future bars and asserts the plan and the prompt do not change.
-* **Anonymised prompts**: in backtest mode Claude sees opaque ids (`S001…`) and "sim-day N" instead of real
-  tickers/dates, so it cannot simply recall what happened in 2023–2026. This is a mitigation, not a proof:
-  recognisable price patterns can still leak information. Live/paper mode uses real tickers.
-* Kronos forecasts for each rebalance are computed from data up to the prior close, seeded, cached.
-* Reported against SPY buy-and-hold, an exposure-matched SPY (the fund is ≤80% invested), and an
-  equal-weight universe baseline, with a CAPM regression, a block-bootstrap CI on excess return, trade-level
-  win rate and the measured rank-IC of the Kronos signal.
-
-<<RESULTS>>
-
-## State, logs and files
-
-| File | Content |
+| Path | Role |
 |---|---|
-| `state/ledger.jsonl` | **source of truth**: per-day fill prices + executed Plan; replayed by Nautilus every cycle |
-| `state/portfolio.json`, `equity_curve.jsonl`, `trades.jsonl` | derived from the replay (never hand-edited) |
-| `state/latest_decision.json`, `latest_forecasts.json` | last Claude decision (+executed weights), Kronos signal panel |
+| `forge/` | config, universe, data store, risk limits, calendar, shared types |
+| `kronos/forecast.py` | Kronos-mini forecasting on CPU, sampled paths, cache |
+| `brain/` | Claude client (rate limiting, retries, cost log), JSON schema validation, features, decision prompt and repair |
+| `optimize/portfolio.py` | skfolio wrapper and inverse-volatility fallback |
+| `engine/sim.py` | Nautilus execution and accounting, shared by backtest and paper |
+| `engine/paper.py` | event-sourced paper cycle, replaying `state/ledger.jsonl` |
+| `engine/metrics.py` | performance statistics and rank IC |
+| `run/` | `pipeline.py` (the decider), `run_backtest.py`, `run_daily.py`, `report.py` |
+| `api/` | read-only FastAPI dashboard |
+| `scripts/` | `setup.sh`, `run_daily.sh`, `make_demo_state.py` |
+| `tests/` | pytest suite (unit, smoke, end-to-end on synthetic data) |
+
+Runtime files:
+
+| Path | Content |
+|---|---|
+| `state/ledger.jsonl` | source of truth: daily fill prices and executed plans |
+| `state/portfolio.json`, `equity_curve.jsonl`, `trades.jsonl` | derived from the ledger replay |
+| `state/latest_decision.json`, `latest_forecasts.json` | last decision and forecast panel |
 | `state/halt.json` | present only while halted |
-| `logs/decision_log.jsonl`, `logs/engine.log` | every Claude call + decisions; engine log (secrets redacted) |
-| `data/ohlcv_daily.parquet`, `data/forecasts_YYYYMMDD.parquet` | market data; cached Kronos forecasts |
-| `backtests/<run_id>/` | `metrics.json`, `report.txt`, `equity.csv`, `trades.csv`, `decisions.jsonl`, `calls.jsonl` |
+| `logs/decision_log.jsonl`, `logs/engine.log` | every Claude call and decision; engine log with secrets redacted |
+| `backtests/<run_id>/` | metrics, report, equity, trades, decisions, calls |
 
-Dashboard (`http://192.168.1.201:8905`, LAN-visible, GET-only): equity curve vs SPY, positions, last Claude decision
-with rationales, Kronos signal panel, PnL table, trade log, backtest summary, Claude usage/cost.
+### Risk controls
 
-## Going live later (documented, **not built**)
+Enforced in code after the optimizer (`forge/risk.py`, limits in `forge/config.py`):
 
-Do **not** attempt this without a human decision, a funded broker account and an explicit review. Suggested path:
+| Control | Value |
+|---|---|
+| Max positions | 10 |
+| Max single name | 25% of equity |
+| Max gross exposure | 80% (long-only, so at least 20% cash) |
+| Min position size | larger of $1 and 0.5% of equity |
+| Max single order | 30% of equity; whole shares; price within 25% of last close |
+| Loss cap | equity down more than 2% since the previous run halts the cycle (paper mode persists the halt until `--resume`) |
+| Cash account | the simulated venue rejects orders that need leverage |
+| Failure handling | parse or API failure holds the current portfolio |
+| Paper only | no live client or broker code path (`tests/test_no_live.py`) |
 
-1. **Prove it on paper first**: months of daily paper results, compared with the exposure-matched SPY, with
-   the Kronos IC and Claude fallback/halt counts reviewed. A good backtest is not evidence of a live edge.
-2. **Stage 1 – real-time data, simulated fills**: Nautilus ships a `sandbox` adapter (live market data +
-   simulated execution) — run the same strategy on a live clock before any broker is involved.
-3. **Stage 2 – broker**: replace `engine/sim.py`'s backtest engine with a Nautilus *live* `TradingNode` and the
-   `interactive_brokers` adapter (data + execution clients) for US equities. The decider
-   (`run/pipeline.py: decide(date, view) -> Plan`) is already engine-agnostic; what must be written is the
-   live strategy wrapper, position/cash reconciliation from the broker (replacing the ledger replay),
-   partial-fill/rejection handling, market-hours and halt calendars, and an intraday kill switch.
-4. **Controls to add before real money**: broker-side hard limits (max order size, daily loss), a manual
-   approval step for the first N orders, alerting, secrets in a proper store (not `.env`), audit retention of
-   prompts/decisions, and a documented rollback. Taxes, compliance and data-licensing are on you.
-5. **Credentials**: the owner supplies broker keys at that time; nothing in this repo reads or stores them.
+### Backtest method
+
+* Decisions at 09:35 ET use only bars before that day. Fills use that day's open with a 1 bp half-spread
+  and a 1 bp fee per side. Equity is marked at the close. A test checks that corrupting future bars does not
+  change the plan.
+* Kronos forecasts for each rebalance use data up to the prior close, with a fixed seed.
+* Claude responses are cached by prompt hash for resumability. A fresh run is not expected to reproduce
+  identical LLM output.
 
 ## Known limitations
 
-* Universe is **today's** S&P 100 constituents (survivorship / look-ahead in membership) — flatters results.
-* Daily bars only; fills at the open are idealised (no market impact; 2 bp quoted spread + 1 bp fee/side).
-* yfinance adjusted prices (splits/dividends) are used for history; live paper fills use the recorded price, so a
-  held name's ex-dividend date can shift paper PnL by up to its dividend yield.
-* One backtest path, weekly cadence (a daily-cadence run would need ~960 Claude calls and ~8 h of Kronos CPU), so
-  confidence intervals are wide; the LLM component is non-deterministic across runs (responses are cached by
-  prompt hash for resumability, not for reproducibility of a fresh run).
-* Kronos-mini is a very small model; its measured IC is reported, not assumed.
-* The 80% gross cap structurally lags a fully-invested benchmark in rising markets.
-* **Bind deviation from the spec**: SPEC.md asks for `127.0.0.1:8904`, but that port is held by another local service
-  (Forge Office), and Gavin wants to view it from his device — so the dashboard uses **192.168.1.201:8905**
-  (`forge/config.py: DASHBOARD_HOST/DASHBOARD_PORT`). Paper data only; GET-only endpoints.
+* The universe is today's S&P 100 membership, so the backtest has survivorship bias.
+* Only daily bars are used. Fills are idealised (no market impact).
+* yfinance adjusted prices are used for history. Live paper fills use recorded prices, so ex-dividend dates
+  can shift paper PnL.
+* One backtest path with weekly cadence. Confidence intervals are wide.
+* Kronos-mini is a very small model. Its measured rank IC is reported, not assumed.
+* The 80% gross cap lags a fully invested benchmark in rising markets.
 
-## Layout & conventions
-Python 3.14 only. `FORGE_ROOT` redirects `data/ state/ logs/ backtests/` (tests use a tmp dir).
-Spec: `SPEC.md`. Module contracts and on-disk schemas: `docs/CONTRACTS.md`.
+## Going live (documented, not built)
+
+Going live is not part of this repository. It would need a separate human decision, a funded broker account,
+broker-side risk limits, reconciliation with the broker, and a long record of paper results first. A good
+backtest is not evidence of a live edge.
+
+## Testing
+
+```bash
+.venv/bin/python -m pytest -q                 # all tests
+.venv/bin/python -m pytest -q -m 'not network' # skip tests that call yfinance
+```
+
+The suite covers the risk limits, the no-lookahead check, simulated execution, paper-cycle replay, metrics,
+the Claude client, schema validation, the dashboard API, and a structural check that no live trading code exists.
+
+## License
+
+MIT License, Copyright (c) 2026 Hydrocarbon Forge. See [LICENSE](LICENSE).
