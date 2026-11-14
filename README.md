@@ -4,6 +4,42 @@
 Research and simulation only. Not financial advice, and no profit is claimed.</p>
 
 <p align="center">
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/issues?q=is%3Aclosed"><img alt="closed issues" src="https://img.shields.io/github/issues-closed/Hydrocarbon-Forge/forge-fund"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/pulls?q=is%3Apr+is%3Aclosed"><img alt="closed pull requests" src="https://img.shields.io/github/issues-pr-closed/Hydrocarbon-Forge/forge-fund"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund#readme"><img alt="README" src="https://img.shields.io/badge/README-present-2ea44f?logo=readme&logoColor=white"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund"><img alt="tests" src="https://img.shields.io/badge/tests-test_files_in_repo-2ea44f"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/search?l=python"><img alt="language: Python" src="https://img.shields.io/badge/Python-language-3776AB?logo=python&logoColor=white"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/search?l=html"><img alt="language: HTML" src="https://img.shields.io/badge/HTML-language-E34F26?logo=html5&logoColor=white"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/search?l=shell"><img alt="language: Shell" src="https://img.shields.io/badge/Shell-language-4EAA25?logo=gnubash&logoColor=white"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/blob/main/requirements.txt"><img alt="stack: pip" src="https://img.shields.io/badge/pip-in_repo-3775A9?logo=pypi&logoColor=white"></a>
+</p>
+<p align="center">
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/blob/main/pyproject.toml"><img alt="stack: pyproject" src="https://img.shields.io/badge/pyproject-in_repo-3775A9?logo=python&logoColor=white"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund"><img alt="contains Markdown" src="https://img.shields.io/badge/Markdown-files-000000?logo=markdown&logoColor=white"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund"><img alt="contains JSON" src="https://img.shields.io/badge/JSON-files-000000?logo=json&logoColor=white"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund"><img alt="contains TOML" src="https://img.shields.io/badge/TOML-files-9C4121"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund"><img alt="contains gitignore" src="https://img.shields.io/badge/gitignore-files-F05032?logo=git&logoColor=white"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund"><img alt="contains Shell_script" src="https://img.shields.io/badge/Shell__script-files-4EAA25?logo=gnubash&logoColor=white"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund"><img alt="contains HTML" src="https://img.shields.io/badge/HTML-files-E34F26?logo=html5&logoColor=white"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund"><img alt="contains Python" src="https://img.shields.io/badge/Python-files-3776AB?logo=python&logoColor=white"></a>
+</p>
+<p align="center">
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund"><img alt="contains JSONL" src="https://img.shields.io/badge/JSONL-files-000000"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/topics/backtesting"><img alt="topic: backtesting" src="https://img.shields.io/badge/backtesting-topic-0969da"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/topics/fastapi"><img alt="topic: fastapi" src="https://img.shields.io/badge/fastapi-topic-0969da"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/topics/nautilus-trader"><img alt="topic: nautilus-trader" src="https://img.shields.io/badge/nautilus--trader-topic-0969da"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/topics/paper-trading"><img alt="topic: paper-trading" src="https://img.shields.io/badge/paper--trading-topic-0969da"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/topics/portfolio-optimization"><img alt="topic: portfolio-optimization" src="https://img.shields.io/badge/portfolio--optimization-topic-0969da"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/topics/python"><img alt="topic: python" src="https://img.shields.io/badge/python-topic-0969da"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/topics/skfolio"><img alt="topic: skfolio" src="https://img.shields.io/badge/skfolio-topic-0969da"></a>
+</p>
+<p align="center">
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/topics/time-series-forecasting"><img alt="topic: time-series-forecasting" src="https://img.shields.io/badge/time--series--forecasting-topic-0969da"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund"><img alt="Git" src="https://img.shields.io/badge/Git-version_control-F05032?logo=git&logoColor=white"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund"><img alt="GitHub" src="https://img.shields.io/badge/GitHub-hosted-181717?logo=github&logoColor=white"></a>
+</p>
+
+<p align="center">
 <a href="https://github.com/Hydrocarbon-Forge/forge-fund/stargazers"><img alt="stars" src="https://img.shields.io/github/stars/Hydrocarbon-Forge/forge-fund?style=social"></a>
 <a href="https://github.com/Hydrocarbon-Forge/forge-fund/forks"><img alt="forks" src="https://img.shields.io/github/forks/Hydrocarbon-Forge/forge-fund?style=social"></a>
 <a href="https://github.com/Hydrocarbon-Forge/forge-fund/watchers"><img alt="watchers" src="https://img.shields.io/github/watchers/Hydrocarbon-Forge/forge-fund?style=social"></a>
