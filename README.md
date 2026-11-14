@@ -4,6 +4,24 @@
 Research and simulation only. Not financial advice, and no profit is claimed.</p>
 
 <p align="center">
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/stargazers"><img alt="stars" src="https://img.shields.io/github/stars/Hydrocarbon-Forge/forge-fund?style=social"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/forks"><img alt="forks" src="https://img.shields.io/github/forks/Hydrocarbon-Forge/forge-fund?style=social"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/watchers"><img alt="watchers" src="https://img.shields.io/github/watchers/Hydrocarbon-Forge/forge-fund?style=social"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/issues"><img alt="open issues" src="https://img.shields.io/github/issues/Hydrocarbon-Forge/forge-fund"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/pulls"><img alt="open pull requests" src="https://img.shields.io/github/issues-pr/Hydrocarbon-Forge/forge-fund"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/commits"><img alt="last commit" src="https://img.shields.io/github/last-commit/Hydrocarbon-Forge/forge-fund"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/commits"><img alt="commits per year" src="https://img.shields.io/github/commit-activity/Hydrocarbon-Forge/forge-fund/y"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/graphs/contributors"><img alt="contributors" src="https://img.shields.io/github/contributors/Hydrocarbon-Forge/forge-fund"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund"><img alt="repo size" src="https://img.shields.io/github/repo-size/Hydrocarbon-Forge/forge-fund"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund"><img alt="code size" src="https://img.shields.io/github/languages/code-size/Hydrocarbon-Forge/forge-fund"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund"><img alt="top language" src="https://img.shields.io/github/languages/top/Hydrocarbon-Forge/forge-fund"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund"><img alt="language count" src="https://img.shields.io/github/languages/count/Hydrocarbon-Forge/forge-fund"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/releases"><img alt="latest release" src="https://img.shields.io/github/v/Hydrocarbon-Forge/forge-fund?include_prereleases"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/github/license/Hydrocarbon-Forge/forge-fund"></a>
+<a href="https://github.com/Hydrocarbon-Forge/forge-fund/releases"><img alt="release downloads" src="https://img.shields.io/github/downloads/Hydrocarbon-Forge/forge-fund/total"></a>
+</p>
+
+<p align="center">
 <a href="LICENSE"><img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
 <img alt="language: Python" src="https://img.shields.io/badge/python-3.14%2B-blue">
 <img alt="trading: paper only" src="https://img.shields.io/badge/trading-paper%20only-success">
