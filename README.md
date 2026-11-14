@@ -1,3 +1,11 @@
+<p align="center"><b>A paper-first AI hedge fund that runs on one CPU-only machine.</b></p>
+
+<p align="center">
+<a href="LICENSE"><img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+</p>
+
+---
+
 # forge-fund — a paper-first AI hedge fund
 
 An end-to-end, **paper-trading-only** equity fund that runs entirely on one CPU-only machine
